@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import JSON, String
 from sqlalchemy.orm import Mapped, mapped_column
@@ -10,7 +10,7 @@ from app.db.base import Base
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ExecutionRecord(Base):
@@ -57,5 +57,11 @@ class ExecutionRecord(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         default=utc_now,
+        nullable=False,
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        default=utc_now,
+        onupdate=utc_now,
         nullable=False,
     )

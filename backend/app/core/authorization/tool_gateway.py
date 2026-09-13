@@ -1,21 +1,23 @@
 import hashlib
 import json
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.authorization.execution_failure_handler import (
+    decide_execution_failure,
+)
 from app.core.authorization.execution_store import (
     claim_execution_record,
     complete_execution_record,
-)
-from app.core.authorization.execution_failure_handler import (
-    SAFE_AUTO_RETRY_TOOLS,
-    decide_execution_failure,
+    mark_stale_pending_uncertain,
 )
 from app.schemas.failure import FailureDisposition, FailureType
 from app.schemas.tool_execution import (
+    ExecutionRecordStatus,
     ToolExecutionRequest,
     ToolExecutionResult,
     ToolExecutionStatus,
@@ -75,6 +77,29 @@ def _execute_simulated_tool(
     }
 
 
+def _finalize_execution_result(
+    *,
+    request: ToolExecutionRequest,
+    fingerprint: str,
+    result: ToolExecutionResult,
+    session: Session | None,
+    execution_record: Any | None,
+) -> ToolExecutionResult:
+    if session is not None and execution_record is not None:
+        complete_execution_record(
+            session,
+            record=execution_record,
+            result=result,
+        )
+    else:
+        _EXECUTION_RECORDS[request.idempotency_key] = (
+            fingerprint,
+            result,
+        )
+
+    return result
+
+
 def execute_governed_tool(
     request: ToolExecutionRequest,
     *,
@@ -82,6 +107,7 @@ def execute_governed_tool(
     fallback_executor: ToolExecutor | None = None,
     max_attempts: int = 3,
     session: Session | None = None,
+    pending_stale_after: timedelta = timedelta(minutes=5),
 ) -> ToolExecutionResult:
     schema = TOOL_ARGUMENT_SCHEMAS.get(request.tool_name)
 
@@ -132,6 +158,23 @@ def execute_governed_tool(
                     execution_attempted=False,
                 )
 
+            if execution_record.status == ExecutionRecordStatus.PENDING.value:
+                became_uncertain = mark_stale_pending_uncertain(
+                    session,
+                    record=execution_record,
+                    stale_after=pending_stale_after,
+                )
+
+                if became_uncertain:
+                    return ToolExecutionResult.model_validate(
+                        execution_record.result_payload
+                    )
+
+            if execution_record.status == ExecutionRecordStatus.UNCERTAIN.value:
+                return ToolExecutionResult.model_validate(
+                    execution_record.result_payload
+                )
+
             return ToolExecutionResult(
                 status=ToolExecutionStatus.DUPLICATE_SUPPRESSED,
                 tool_name=request.tool_name,
@@ -141,7 +184,11 @@ def execute_governed_tool(
                 execution_attempted=False,
             )
 
-    existing = _EXECUTION_RECORDS.get(request.idempotency_key)
+    existing = (
+        _EXECUTION_RECORDS.get(request.idempotency_key)
+        if session is None
+        else None
+    )
 
     if existing is not None:
         existing_fingerprint, _ = existing
@@ -174,7 +221,7 @@ def execute_governed_tool(
                 request.tool_name,
                 validated_arguments,
             )
-        except Exception as primary_error:
+        except Exception as primary_error:  # noqa: BLE001
             failure = decide_execution_failure(
                 action_id=request.action_id,
                 idempotency_key=request.idempotency_key,
@@ -191,13 +238,21 @@ def execute_governed_tool(
                 failure.disposition
                 == FailureDisposition.HUMAN_REVIEW_REQUIRED
             ):
-                return ToolExecutionResult(
+                result = ToolExecutionResult(
                     status=ToolExecutionStatus.HUMAN_REVIEW_REQUIRED,
                     tool_name=request.tool_name,
                     reasons=[
                         "Partial execution failure requires human review."
                     ],
                     execution_attempted=True,
+                )
+
+                return _finalize_execution_result(
+                    request=request,
+                    fingerprint=fingerprint,
+                    result=result,
+                    session=session,
+                    execution_record=execution_record,
                 )
 
             if (
@@ -211,7 +266,7 @@ def execute_governed_tool(
                         request.tool_name,
                         validated_arguments,
                     )
-                except Exception as fallback_error:
+                except Exception as fallback_error:  # noqa: BLE001
                     fallback_failure = decide_execution_failure(
                         action_id=request.action_id,
                         idempotency_key=request.idempotency_key,
@@ -225,7 +280,7 @@ def execute_governed_tool(
                         fallback_failure.disposition
                         == FailureDisposition.HUMAN_REVIEW_REQUIRED
                     ):
-                        return ToolExecutionResult(
+                        result = ToolExecutionResult(
                             status=(
                                 ToolExecutionStatus.HUMAN_REVIEW_REQUIRED
                             ),
@@ -237,7 +292,15 @@ def execute_governed_tool(
                             fallback_used=True,
                         )
 
-                    return ToolExecutionResult(
+                        return _finalize_execution_result(
+                            request=request,
+                            fingerprint=fingerprint,
+                            result=result,
+                            session=session,
+                            execution_record=execution_record,
+                        )
+
+                    result = ToolExecutionResult(
                         status=ToolExecutionStatus.FAILED_CLOSED,
                         tool_name=request.tool_name,
                         reasons=[
@@ -246,6 +309,14 @@ def execute_governed_tool(
                         ],
                         execution_attempted=True,
                         fallback_used=True,
+                    )
+
+                    return _finalize_execution_result(
+                        request=request,
+                        fingerprint=fingerprint,
+                        result=result,
+                        session=session,
+                        execution_record=execution_record,
                     )
 
                 result = ToolExecutionResult(
@@ -260,21 +331,15 @@ def execute_governed_tool(
                     fallback_used=True,
                 )
 
-                _EXECUTION_RECORDS[request.idempotency_key] = (
-                    fingerprint,
-                    result,
+                return _finalize_execution_result(
+                    request=request,
+                    fingerprint=fingerprint,
+                    result=result,
+                    session=session,
+                    execution_record=execution_record,
                 )
 
-                if session is not None and execution_record is not None:
-                    complete_execution_record(
-                        session,
-                        record=execution_record,
-                        result=result,
-                    )
-
-                return result
-
-            return ToolExecutionResult(
+            result = ToolExecutionResult(
                 status=ToolExecutionStatus.FAILED_CLOSED,
                 tool_name=request.tool_name,
                 reasons=[
@@ -284,6 +349,14 @@ def execute_governed_tool(
                     )
                 ],
                 execution_attempted=True,
+            )
+
+            return _finalize_execution_result(
+                request=request,
+                fingerprint=fingerprint,
+                result=result,
+                session=session,
+                execution_record=execution_record,
             )
 
         result = ToolExecutionResult(
@@ -299,25 +372,27 @@ def execute_governed_tool(
             execution_attempted=True,
         )
 
-        _EXECUTION_RECORDS[request.idempotency_key] = (
-            fingerprint,
-            result,
+        return _finalize_execution_result(
+            request=request,
+            fingerprint=fingerprint,
+            result=result,
+            session=session,
+            execution_record=execution_record,
         )
 
-        if session is not None and execution_record is not None:
-            complete_execution_record(
-                session,
-                record=execution_record,
-                result=result,
-            )
-
-        return result
-
-    return ToolExecutionResult(
+    result = ToolExecutionResult(
         status=ToolExecutionStatus.FAILED_CLOSED,
         tool_name=request.tool_name,
         reasons=["Execution exhausted all permitted attempts."],
         execution_attempted=True,
+    )
+
+    return _finalize_execution_result(
+        request=request,
+        fingerprint=fingerprint,
+        result=result,
+        session=session,
+        execution_record=execution_record,
     )
 
 
