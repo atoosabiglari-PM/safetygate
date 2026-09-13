@@ -4,7 +4,12 @@ from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.orm import Session
 
+from app.core.authorization.execution_store import (
+    get_execution_record,
+    save_execution_record,
+)
 from app.core.authorization.execution_failure_handler import (
     SAFE_AUTO_RETRY_TOOLS,
     decide_execution_failure,
@@ -76,6 +81,7 @@ def execute_governed_tool(
     executor: ToolExecutor | None = None,
     fallback_executor: ToolExecutor | None = None,
     max_attempts: int = 3,
+    session: Session | None = None,
 ) -> ToolExecutionResult:
     schema = TOOL_ARGUMENT_SCHEMAS.get(request.tool_name)
 
@@ -103,6 +109,34 @@ def execute_governed_tool(
         )
 
     fingerprint = _request_fingerprint(request)
+
+    persistent_record = None
+
+    if session is not None:
+        persistent_record = get_execution_record(
+            session,
+            idempotency_key=request.idempotency_key,
+        )
+
+    if persistent_record is not None:
+        if persistent_record.request_fingerprint != fingerprint:
+            return ToolExecutionResult(
+                status=ToolExecutionStatus.FAILED_CLOSED,
+                tool_name=request.tool_name,
+                reasons=[
+                    "Idempotency key was reused for a different action payload."
+                ],
+                execution_attempted=False,
+            )
+
+        return ToolExecutionResult(
+            status=ToolExecutionStatus.DUPLICATE_SUPPRESSED,
+            tool_name=request.tool_name,
+            reasons=[
+                "Duplicate execution suppressed by durable idempotency control."
+            ],
+            execution_attempted=False,
+        )
 
     existing = _EXECUTION_RECORDS.get(request.idempotency_key)
 
@@ -228,6 +262,16 @@ def execute_governed_tool(
                     result,
                 )
 
+                if session is not None:
+                    save_execution_record(
+                        session,
+                        idempotency_key=request.idempotency_key,
+                        action_id=request.action_id,
+                        tool_name=request.tool_name,
+                        request_fingerprint=fingerprint,
+                        result=result,
+                    )
+
                 return result
 
             return ToolExecutionResult(
@@ -259,6 +303,16 @@ def execute_governed_tool(
             fingerprint,
             result,
         )
+
+        if session is not None:
+            save_execution_record(
+                session,
+                idempotency_key=request.idempotency_key,
+                action_id=request.action_id,
+                tool_name=request.tool_name,
+                request_fingerprint=fingerprint,
+                result=result,
+            )
 
         return result
 
