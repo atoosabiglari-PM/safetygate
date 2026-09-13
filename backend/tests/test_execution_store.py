@@ -1,4 +1,5 @@
 from app.core.authorization.execution_store import (
+    claim_execution_record,
     get_execution_record,
     save_execution_record,
 )
@@ -118,3 +119,40 @@ def test_gateway_suppresses_duplicate_after_restart(tmp_path) -> None:
     assert calls["count"] == 0
 
     restarted_engine.dispose()
+
+
+
+def test_only_one_caller_can_claim_same_execution(tmp_path) -> None:
+    database_path = tmp_path / "atomic-claim.db"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    with session_factory() as first_session:
+        first_claimed, first_record = claim_execution_record(
+            first_session,
+            idempotency_key="idem-atomic-001",
+            action_id="action-atomic-001",
+            tool_name="send_message",
+            request_fingerprint="fingerprint-001",
+        )
+
+    with session_factory() as second_session:
+        second_claimed, second_record = claim_execution_record(
+            second_session,
+            idempotency_key="idem-atomic-001",
+            action_id="action-atomic-001",
+            tool_name="send_message",
+            request_fingerprint="fingerprint-001",
+        )
+
+    assert first_claimed is True
+    assert first_record.status == "PENDING"
+
+    assert second_claimed is False
+    assert second_record.id == first_record.id
+    assert second_record.status == "PENDING"
+
+    engine.dispose()

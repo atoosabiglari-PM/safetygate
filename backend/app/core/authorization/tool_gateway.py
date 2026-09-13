@@ -7,8 +7,8 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.authorization.execution_store import (
-    get_execution_record,
-    save_execution_record,
+    claim_execution_record,
+    complete_execution_record,
 )
 from app.core.authorization.execution_failure_handler import (
     SAFE_AUTO_RETRY_TOOLS,
@@ -110,33 +110,36 @@ def execute_governed_tool(
 
     fingerprint = _request_fingerprint(request)
 
-    persistent_record = None
+    execution_record = None
 
     if session is not None:
-        persistent_record = get_execution_record(
+        claimed, execution_record = claim_execution_record(
             session,
             idempotency_key=request.idempotency_key,
+            action_id=request.action_id,
+            tool_name=request.tool_name,
+            request_fingerprint=fingerprint,
         )
 
-    if persistent_record is not None:
-        if persistent_record.request_fingerprint != fingerprint:
+        if not claimed:
+            if execution_record.request_fingerprint != fingerprint:
+                return ToolExecutionResult(
+                    status=ToolExecutionStatus.FAILED_CLOSED,
+                    tool_name=request.tool_name,
+                    reasons=[
+                        "Idempotency key was reused for a different action payload."
+                    ],
+                    execution_attempted=False,
+                )
+
             return ToolExecutionResult(
-                status=ToolExecutionStatus.FAILED_CLOSED,
+                status=ToolExecutionStatus.DUPLICATE_SUPPRESSED,
                 tool_name=request.tool_name,
                 reasons=[
-                    "Idempotency key was reused for a different action payload."
+                    "Duplicate execution suppressed by atomic durable idempotency control."
                 ],
                 execution_attempted=False,
             )
-
-        return ToolExecutionResult(
-            status=ToolExecutionStatus.DUPLICATE_SUPPRESSED,
-            tool_name=request.tool_name,
-            reasons=[
-                "Duplicate execution suppressed by durable idempotency control."
-            ],
-            execution_attempted=False,
-        )
 
     existing = _EXECUTION_RECORDS.get(request.idempotency_key)
 
@@ -262,13 +265,10 @@ def execute_governed_tool(
                     result,
                 )
 
-                if session is not None:
-                    save_execution_record(
+                if session is not None and execution_record is not None:
+                    complete_execution_record(
                         session,
-                        idempotency_key=request.idempotency_key,
-                        action_id=request.action_id,
-                        tool_name=request.tool_name,
-                        request_fingerprint=fingerprint,
+                        record=execution_record,
                         result=result,
                     )
 
@@ -304,13 +304,10 @@ def execute_governed_tool(
             result,
         )
 
-        if session is not None:
-            save_execution_record(
+        if session is not None and execution_record is not None:
+            complete_execution_record(
                 session,
-                idempotency_key=request.idempotency_key,
-                action_id=request.action_id,
-                tool_name=request.tool_name,
-                request_fingerprint=fingerprint,
+                record=execution_record,
                 result=result,
             )
 
