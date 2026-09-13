@@ -15,7 +15,9 @@ def evaluate_runtime_action(
 ) -> RuntimeDecisionResult:
     proposal = request.proposal
     passport = request.passport
+    approval = request.approval
 
+    # 1. Validate Safety Passport before considering any approval.
     passport_result = validate_passport(
         passport_status=passport.status,
         passport_configuration_hash=passport.certified_configuration_hash,
@@ -34,6 +36,7 @@ def evaluate_runtime_action(
             reasons=[passport_result.reason],
         )
 
+    # 2. Enforce passport tool boundaries.
     if proposal.tool_name in passport.prohibited_tools:
         return RuntimeDecisionResult(
             decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
@@ -52,6 +55,7 @@ def evaluate_runtime_action(
             ],
         )
 
+    # 3. Enforce deterministic permission contract.
     required_permissions = TOOL_PERMISSION_REQUIREMENTS.get(proposal.tool_name)
 
     if required_permissions is None:
@@ -73,6 +77,43 @@ def evaluate_runtime_action(
             ],
         )
 
+    # 4. High-risk irreversible actions require verified human approval.
+    risk_level = proposal.risk_level.upper()
+
+    if risk_level == "HIGH" and proposal.is_irreversible:
+        if approval is None:
+            return RuntimeDecisionResult(
+                decision=RuntimeDecision.HUMAN_REVIEW_REQUIRED,
+                reasons=[
+                    "High-risk irreversible action requires human approval."
+                ],
+            )
+
+        if approval.action_id != proposal.action_id:
+            return RuntimeDecisionResult(
+                decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+                reasons=[
+                    "Human approval does not match the proposed action."
+                ],
+            )
+
+        if approval.approver_identity not in passport.human_approvers:
+            return RuntimeDecisionResult(
+                decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+                reasons=[
+                    "Human approval was issued by an unauthorized approver."
+                ],
+            )
+
+        if not approval.approved:
+            return RuntimeDecisionResult(
+                decision=RuntimeDecision.DENY,
+                reasons=[
+                    "Authorized human reviewer rejected the proposed action."
+                ],
+            )
+
+    # 5. Passport conditions still apply even after valid approval.
     if proposal.tool_name in passport.conditional_tools:
         return RuntimeDecisionResult(
             decision=RuntimeDecision.ALLOW_WITH_CONDITIONS,
@@ -82,16 +123,6 @@ def evaluate_runtime_action(
             conditions=[
                 "Record full audit evidence.",
                 "Verify execution result.",
-            ],
-        )
-
-    risk_level = proposal.risk_level.upper()
-
-    if risk_level == "HIGH" and proposal.is_irreversible:
-        return RuntimeDecisionResult(
-            decision=RuntimeDecision.HUMAN_REVIEW_REQUIRED,
-            reasons=[
-                "High-risk irreversible action requires human approval."
             ],
         )
 
@@ -110,6 +141,6 @@ def evaluate_runtime_action(
     return RuntimeDecisionResult(
         decision=RuntimeDecision.ALLOW,
         reasons=[
-            "Passport, configuration, tool, permission, and runtime checks passed."
+            "Passport, configuration, tool, permission, risk, and approval checks passed."
         ],
     )

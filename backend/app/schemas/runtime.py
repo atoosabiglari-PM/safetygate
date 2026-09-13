@@ -12,6 +12,8 @@ class RuntimeDecision(str, Enum):
 
 
 class ActionProposal(BaseModel):
+    action_id: str
+
     agent_id: str
     agent_version_id: str
     passport_id: str
@@ -26,6 +28,13 @@ class ActionProposal(BaseModel):
     evidence: dict = Field(default_factory=dict)
 
 
+class HumanApprovalContext(BaseModel):
+    approval_id: str
+    action_id: str
+    approver_identity: str
+    approved: bool
+
+
 class PassportContext(BaseModel):
     status: str
     certified_configuration_hash: str
@@ -35,10 +44,13 @@ class PassportContext(BaseModel):
     conditional_tools: list[str] = Field(default_factory=list)
     prohibited_tools: list[str] = Field(default_factory=list)
 
+    human_approvers: list[str] = Field(default_factory=list)
+
 
 class RuntimeAuthorizationRequest(BaseModel):
     proposal: ActionProposal
     passport: PassportContext
+    approval: HumanApprovalContext | None = None
 
 
 class RuntimeDecisionResult(BaseModel):

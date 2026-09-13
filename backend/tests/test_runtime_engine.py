@@ -1,6 +1,7 @@
 from app.core.authorization.runtime_engine import evaluate_runtime_action
 from app.schemas.runtime import (
     ActionProposal,
+    HumanApprovalContext,
     PassportContext,
     RuntimeAuthorizationRequest,
     RuntimeDecision,
@@ -10,8 +11,10 @@ from app.schemas.runtime import (
 def make_request(
     proposal_overrides=None,
     passport_overrides=None,
+    approval_overrides=None,
 ) -> RuntimeAuthorizationRequest:
     proposal_data = {
+        "action_id": "action-001",
         "agent_id": "agent-001",
         "agent_version_id": "version-001",
         "passport_id": "passport-001",
@@ -30,6 +33,7 @@ def make_request(
         "allowed_tools": ["read_documents", "deploy_service"],
         "conditional_tools": ["send_message"],
         "prohibited_tools": ["delete_records"],
+        "human_approvers": ["reviewer@example.com"],
     }
 
     if proposal_overrides:
@@ -38,9 +42,22 @@ def make_request(
     if passport_overrides:
         passport_data.update(passport_overrides)
 
+    approval = None
+
+    if approval_overrides is not None:
+        approval_data = {
+            "approval_id": "approval-001",
+            "action_id": proposal_data["action_id"],
+            "approver_identity": "reviewer@example.com",
+            "approved": True,
+        }
+        approval_data.update(approval_overrides)
+        approval = HumanApprovalContext(**approval_data)
+
     return RuntimeAuthorizationRequest(
         proposal=ActionProposal(**proposal_data),
         passport=PassportContext(**passport_data),
+        approval=approval,
     )
 
 
@@ -134,7 +151,7 @@ def test_conditional_passport_tool_is_allowed_with_conditions() -> None:
     assert len(result.conditions) == 2
 
 
-def test_high_risk_irreversible_action_requires_human_review() -> None:
+def test_high_risk_irreversible_without_approval_requires_review() -> None:
     result = evaluate_runtime_action(
         make_request(
             proposal_overrides={
@@ -147,6 +164,76 @@ def test_high_risk_irreversible_action_requires_human_review() -> None:
     )
 
     assert result.decision == RuntimeDecision.HUMAN_REVIEW_REQUIRED
+
+
+def test_high_risk_irreversible_with_valid_approval_is_allowed() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "tool_name": "deploy_service",
+                "requested_permissions": ["deploy:write"],
+                "risk_level": "HIGH",
+                "is_irreversible": True,
+            },
+            approval_overrides={},
+        )
+    )
+
+    assert result.decision == RuntimeDecision.ALLOW
+
+
+def test_mismatched_action_approval_is_non_overridable_denied() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "tool_name": "deploy_service",
+                "requested_permissions": ["deploy:write"],
+                "risk_level": "HIGH",
+                "is_irreversible": True,
+            },
+            approval_overrides={
+                "action_id": "different-action",
+            },
+        )
+    )
+
+    assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
+
+
+def test_unauthorized_approver_is_non_overridable_denied() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "tool_name": "deploy_service",
+                "requested_permissions": ["deploy:write"],
+                "risk_level": "HIGH",
+                "is_irreversible": True,
+            },
+            approval_overrides={
+                "approver_identity": "attacker@example.com",
+            },
+        )
+    )
+
+    assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
+
+
+def test_authorized_human_rejection_denies_action() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "tool_name": "deploy_service",
+                "requested_permissions": ["deploy:write"],
+                "risk_level": "HIGH",
+                "is_irreversible": True,
+            },
+            approval_overrides={
+                "approved": False,
+            },
+        )
+    )
+
+    assert result.decision == RuntimeDecision.DENY
 
 
 def test_medium_risk_allowed_tool_requires_conditions() -> None:
