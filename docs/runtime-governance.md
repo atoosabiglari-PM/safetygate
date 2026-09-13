@@ -30,9 +30,11 @@ The governed runtime path evaluates:
 8. Exact authorization-to-execution binding
 9. Principal role authorization
 10. Tool argument schema validation
-11. Idempotency and duplicate suppression
-12. Execution, retry, fallback, or escalation
-13. Audit outcome recording
+11. Atomic durable execution claim
+12. Idempotency and duplicate suppression
+13. Execution, retry, fallback, or escalation
+14. Durable execution outcome recording
+15. Persistent audit evidence
 
 Authorization and execution are separate boundaries.
 
@@ -57,6 +59,8 @@ Current runtime boundaries:
 Human approval and execution authority are intentionally separate concepts.
 
 An authorized approver may approve an action where policy permits, but approval alone does not grant permission to execute a tool.
+
+The current prototype trusts caller-provided principal identity. Production deployment requires integration with a trusted identity provider.
 
 ## Permissions and Tool Contracts
 
@@ -110,13 +114,17 @@ If required post-execution verification is not satisfied, the workflow escalates
 
 ## Human Approval
 
-High-risk irreversible actions require verified human approval.
+High-risk irreversible actions require human approval where policy permits.
 
 Approval validation includes:
 
 - action identity match
 - authorized approver identity
 - explicit approval result
+
+Approval evidence is persisted independently from the runtime audit record.
+
+Reuse of an approval identifier with different approval evidence is rejected.
 
 Prompt wording cannot convert a hard deny into an approval.
 
@@ -128,25 +136,56 @@ Tool execution is schema validated before invocation.
 
 Malformed tool arguments fail closed before execution.
 
-The execution boundary also verifies that the requested `action_id` and `tool_name` exactly match the previously authorized proposal.
+The execution boundary verifies that the requested `action_id` and `tool_name` exactly match the previously authorized proposal.
 
 This prevents an authorized action from being swapped for a different tool immediately before execution.
 
-## Idempotency and Duplicate Protection
+## Durable Idempotency and Duplicate Protection
 
-SafetyGate currently maintains idempotency records for simulated execution.
+When database persistence is enabled, SafetyGate creates an atomic durable execution claim before tool execution.
+
+The idempotency key is uniquely constrained by the database.
 
 A repeated idempotency key with the same action fingerprint is suppressed.
 
-A reused idempotency key with a different payload fails closed.
+A reused idempotency key with a different action payload fails closed.
 
-This prevents accidental duplicate execution in the current runtime demonstration.
+Concurrent callers racing for the same execution cannot both acquire the durable claim.
 
-### Current limitation
+The automated concurrency test deliberately starts two callers simultaneously and verifies that the underlying executor runs exactly once.
 
-The current idempotency store is in memory.
+## Durable Execution States
 
-It demonstrates the governance rule and test behavior but is not yet a durable production-grade idempotency store across process restarts or multiple service instances.
+Execution records use explicit durable states:
+
+- `PENDING`
+- `EXECUTED`
+- `FALLBACK_EXECUTED`
+- `FAILED_CLOSED`
+- `HUMAN_REVIEW_REQUIRED`
+- `UNCERTAIN`
+
+Terminal workflow paths persist their execution result instead of leaving a claimed action indefinitely in `PENDING`.
+
+Each execution record includes creation and update timestamps to support recovery reasoning.
+
+## Crash Recovery and Uncertain Outcomes
+
+A process can fail after obtaining an execution claim but before SafetyGate receives or persists a final tool result.
+
+For consequential external actions, absence of a response does not prove that the action did not happen.
+
+SafetyGate therefore does not blindly retry stale `PENDING` actions.
+
+When a `PENDING` execution exceeds the configured recovery window, it transitions to:
+
+`UNCERTAIN`
+
+`UNCERTAIN` means SafetyGate cannot prove whether the external side effect occurred.
+
+A subsequent request for that execution receives the uncertain result rather than automatically executing the tool again.
+
+This behavior is intended to prevent duplicate real-world actions when execution outcome is ambiguous.
 
 ## Failure Handling
 
@@ -163,15 +202,18 @@ Current policy:
 - consequential operations are not automatically retried when completion status may be unknown
 - partial failure requires human review
 - unknown failure fails closed
-- duplicate completed actions are suppressed
+- completed duplicate actions are suppressed
+- stale ambiguous execution claims become `UNCERTAIN`
 
 Automatic fallback is restricted to explicitly designated safe fallback tools.
 
 Fallback does not bypass authorization.
 
-## Audit Evidence
+## Persistent Audit Evidence
 
-Runtime audit records capture governance evidence including:
+Runtime audit evidence can be persisted through the governed workflow.
+
+Persistent audit entries capture governance evidence including:
 
 - event and timestamp
 - action identity
@@ -181,22 +223,26 @@ Runtime audit records capture governance evidence including:
 - requested permissions
 - certified and current configuration hashes
 - approval identity and outcome where applicable
+- principal identity and roles
+- enforcement reasons
 - runtime decision
 - reasons and conditions
 - evidence
 - execution outcome
 
-Audit evidence is automatically created through the governed runtime authorization path.
+Approval evidence is also stored persistently and is bound to the approved action and approver identity.
+
+Runtime audit event identifiers and approval identifiers are uniquely constrained to protect evidence integrity.
 
 ## Secret-Safe Logging
 
-Audit evidence is recursively sanitized before storage in the runtime audit record.
+Audit evidence is recursively sanitized before persistence.
 
 Known sensitive fields such as API keys, authorization headers, access tokens, refresh tokens, passwords, client secrets, private keys, and related secret fields are replaced with:
 
 `[REDACTED]`
 
-Non-sensitive governance context is preserved so logs remain useful for review and incident analysis.
+Non-sensitive governance context is preserved so evidence remains useful for review and incident analysis.
 
 Redaction tests verify that original secret values do not appear in serialized audit output.
 
@@ -212,39 +258,46 @@ Memory controls include scope, retention, update policy, type allowlists and pro
 
 ## Current Scope
 
-The current implementation is a governed, simulated runtime proof suitable for validating SafetyGate's control model.
+The current implementation is a deterministic governance kernel with persistent runtime evidence, durable execution claims, failure handling, crash-recovery controls, and concurrency protection.
 
-It demonstrates real deterministic authorization logic and failure controls, but it should not yet be described as a complete production deployment.
+It should not yet be described as a complete production runtime control plane.
 
-Examples of later production hardening include:
+The default tool executor remains simulated. Production deployment still requires real authenticated identity, production tool or MCP adapters, and infrastructure hardening.
 
-- durable distributed idempotency
-- persistent audit storage
-- production identity-provider integration
-- production tool adapters
+Planned production capabilities include:
+
+- trusted identity-provider integration
+- formal policy provenance and rule hierarchy
 - cryptographically signed Safety Passports
-- policy-engine integration and deployment hardening
-- distributed execution coordination
+- external policy-engine integration
+- real MCP and production tool adapters
+- production database and cloud deployment
+- operator-facing API and user interface
 
 ## Validation
 
-The automated test suite exercises allowed and denied paths including:
+The automated test suite exercises allowed, denied, failure, recovery, and adversarial paths including:
 
 - admission controls
 - Safety Passport validation
 - permission enforcement
 - human approval
+- persistent approval evidence
 - role enforcement
 - memory isolation
 - tool schema validation
 - authorization/execution binding
 - conditional authorization
-- duplicate suppression
+- durable duplicate suppression
+- process-restart persistence
+- simultaneous concurrency
 - retry behavior
 - safe fallback
 - partial-failure escalation
-- audit creation
+- stale `PENDING` recovery to `UNCERTAIN`
+- persistent runtime audit evidence
 - secret redaction
+- prompt-based authorization bypass attempts
 
 Run `pytest -q` to execute the test suite.
 
