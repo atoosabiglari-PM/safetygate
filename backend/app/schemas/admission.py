@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class AdmissionDecision(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
+    NON_OVERRIDABLE_FAIL = "NON_OVERRIDABLE_FAIL"
 
 
 class AgentAdmissionRequest(BaseModel):

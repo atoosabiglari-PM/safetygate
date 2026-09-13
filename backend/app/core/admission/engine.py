@@ -9,34 +9,44 @@ HIGH_RISK_AUTONOMY_LEVELS = {"HIGH", "FULL", "UNBOUNDED"}
 
 
 def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
-    reasons: list[str] = []
+    non_overridable_reasons: list[str] = []
+    correctable_reasons: list[str] = []
 
-    if not request.owner_identity.strip():
-        reasons.append("Agent must have an accountable owner.")
+    if not request.jurisdictions:
+        non_overridable_reasons.append(
+            "Agent cannot operate without at least one declared jurisdiction."
+        )
 
-    if not request.purpose.strip():
-        reasons.append("Agent must declare a valid purpose.")
+    prohibited_conflicts = set(request.tools) & set(request.prohibited_actions)
+
+    if prohibited_conflicts:
+        non_overridable_reasons.append(
+            "Agent requested a capability that is explicitly prohibited: "
+            + ", ".join(sorted(prohibited_conflicts))
+        )
 
     if request.autonomy_level.upper() in HIGH_RISK_AUTONOMY_LEVELS:
         if not request.human_approval_actions:
-            reasons.append(
+            correctable_reasons.append(
                 "High-autonomy agents must declare actions requiring human approval."
             )
 
-    if set(request.tools) & set(request.prohibited_actions):
-        reasons.append(
-            "An agent cannot request tools that are explicitly prohibited."
+    if non_overridable_reasons:
+        return AdmissionResult(
+            decision=AdmissionDecision.NON_OVERRIDABLE_FAIL,
+            reasons=non_overridable_reasons + correctable_reasons,
         )
 
-    if reasons:
+    if correctable_reasons:
         return AdmissionResult(
             decision=AdmissionDecision.FAIL,
-            reasons=reasons,
+            reasons=correctable_reasons,
         )
 
     return AdmissionResult(
         decision=AdmissionDecision.PASS,
         reasons=[
-            "Agent identity, ownership, purpose, autonomy, and declared boundaries passed admission checks."
+            "Agent identity, ownership, purpose, autonomy, jurisdiction, "
+            "and declared boundaries passed admission checks."
         ],
     )
