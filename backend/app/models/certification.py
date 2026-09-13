@@ -1,16 +1,16 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
-from sqlalchemy import ForeignKey, JSON, String, Text
+from sqlalchemy import JSON, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class SafetyPassport(Base):
@@ -62,6 +62,12 @@ class SafetyPassport(Base):
     )
 
     prohibited_tools: Mapped[list] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
+    )
+
+    human_approvers: Mapped[list] = mapped_column(
         JSON,
         default=list,
         nullable=False,

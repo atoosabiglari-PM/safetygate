@@ -1,4 +1,23 @@
-from app.core.authorization.runtime_engine import evaluate_runtime_action
+from app.core.authorization.runtime_engine import (
+    evaluate_runtime_action as _evaluate_runtime_action,
+)
+
+
+def valid_signature(**kwargs) -> bool:
+    return True
+
+
+def invalid_signature(**kwargs) -> bool:
+    return False
+
+
+def evaluate_runtime_action(request):
+    return _evaluate_runtime_action(
+        request,
+        signature_verifier=valid_signature,
+    )
+
+
 from app.schemas.runtime import (
     ActionProposal,
     HumanApprovalContext,
@@ -27,13 +46,27 @@ def make_request(
     }
 
     passport_data = {
+        "passport_id": "passport-001",
+        "organization_id": "org-001",
+        "agent_version_id": "version-001",
         "status": "ACTIVE",
         "certified_configuration_hash": "abc123",
         "current_configuration_hash": "abc123",
+        "policy_version": "policy-v1",
+        "risk_class": "LOW",
         "allowed_tools": ["read_documents", "deploy_service"],
         "conditional_tools": ["send_message"],
         "prohibited_tools": ["delete_records"],
         "human_approvers": ["reviewer@example.com"],
+        "issued_at": "2026-09-13T21:22:26+00:00",
+        "signature_key_id": (
+            "projects/safetygate-atoosa-2026/"
+            "locations/global/"
+            "keyRings/safetygate-dev/"
+            "cryptoKeys/safety-passport-signing/"
+            "cryptoKeyVersions/1"
+        ),
+        "signature": "placeholder-step9-signature",
     }
 
     if proposal_overrides:
@@ -271,5 +304,74 @@ def test_prompt_wording_cannot_bypass_hard_safety_boundary() -> None:
     assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
     assert any(
         "prohibited" in reason.lower()
+        for reason in result.reasons
+    )
+
+
+def test_invalid_passport_signature_is_non_overridable_denied() -> None:
+    result = _evaluate_runtime_action(
+        make_request(),
+        signature_verifier=invalid_signature,
+    )
+
+    assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
+    assert any(
+        "cryptographic signature" in reason.lower()
+        for reason in result.reasons
+    )
+
+
+def test_runtime_passes_signature_evidence_to_verifier() -> None:
+    captured = {}
+
+    def capture_signature(**kwargs) -> bool:
+        captured.update(kwargs)
+        return True
+
+    request = make_request()
+
+    result = _evaluate_runtime_action(
+        request,
+        signature_verifier=capture_signature,
+    )
+
+    assert result.decision == RuntimeDecision.ALLOW
+    assert captured["signature"] == request.passport.signature
+    assert (
+        captured["key_version_name"]
+        == request.passport.signature_key_id
+    )
+    assert isinstance(captured["payload"], bytes)
+    assert captured["payload"]
+
+
+def test_mismatched_passport_id_is_non_overridable_denied() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "passport_id": "different-passport",
+            }
+        )
+    )
+
+    assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
+    assert any(
+        "passport_id" in reason
+        for reason in result.reasons
+    )
+
+
+def test_mismatched_agent_version_is_non_overridable_denied() -> None:
+    result = evaluate_runtime_action(
+        make_request(
+            proposal_overrides={
+                "agent_version_id": "different-version",
+            }
+        )
+    )
+
+    assert result.decision == RuntimeDecision.NON_OVERRIDABLE_DENY
+    assert any(
+        "agent_version_id" in reason
         for reason in result.reasons
     )

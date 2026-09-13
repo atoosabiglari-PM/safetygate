@@ -1,6 +1,11 @@
 from datetime import UTC, datetime, timedelta
 
+import app.services.runtime_authorization as runtime_authorization_service
 import jwt
+import pytest
+from app.core.authorization.runtime_engine import (
+    evaluate_runtime_action as _evaluate_runtime_action,
+)
 from app.schemas.admission import (
     AdmissionDecision,
     AgentAdmissionRequest,
@@ -18,6 +23,28 @@ from app.schemas.tool_execution import (
 )
 from app.services.trusted_workflow import run_oidc_governed_workflow
 from cryptography.hazmat.primitives.asymmetric import rsa
+
+
+def _valid_signature(**kwargs) -> bool:
+    return True
+
+
+@pytest.fixture(autouse=True)
+def _stub_kms_signature_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def evaluate_with_test_verifier(request):
+        return _evaluate_runtime_action(
+            request,
+            signature_verifier=_valid_signature,
+        )
+
+    monkeypatch.setattr(
+        runtime_authorization_service,
+        "evaluate_runtime_action",
+        evaluate_with_test_verifier,
+    )
+
 
 ISSUER = "https://identity.example.com"
 AUDIENCE = "safetygate"
@@ -72,13 +99,27 @@ def test_verified_oidc_identity_runs_governed_workflow() -> None:
             risk_level="LOW",
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=["read_documents"],
             conditional_tools=[],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 

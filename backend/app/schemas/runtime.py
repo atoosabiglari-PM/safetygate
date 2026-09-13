@@ -36,15 +36,26 @@ class HumanApprovalContext(BaseModel):
 
 
 class PassportContext(BaseModel):
+    passport_id: str
+    organization_id: str
+    agent_version_id: str
+
     status: str
     certified_configuration_hash: str
     current_configuration_hash: str
 
+    policy_version: str
+    risk_class: str
+
     allowed_tools: list[str] = Field(default_factory=list)
     conditional_tools: list[str] = Field(default_factory=list)
     prohibited_tools: list[str] = Field(default_factory=list)
-
     human_approvers: list[str] = Field(default_factory=list)
+
+    issued_at: str
+
+    signature_key_id: str | None
+    signature: str | None
 
 
 class RuntimeAuthorizationRequest(BaseModel):

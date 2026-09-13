@@ -1,6 +1,9 @@
 from app.core.admission.tool_registry import TOOL_PERMISSION_REQUIREMENTS
+from app.core.certification.kms_verifier import verify_passport_signature
+from app.core.certification.passport_payload import build_runtime_passport_payload
 from app.core.recertification.passport_validator import (
     PassportValidationStatus,
+    SignatureVerifier,
     validate_passport,
 )
 from app.schemas.runtime import (
@@ -12,16 +15,24 @@ from app.schemas.runtime import (
 
 def evaluate_runtime_action(
     request: RuntimeAuthorizationRequest,
+    *,
+    signature_verifier: SignatureVerifier = verify_passport_signature,
 ) -> RuntimeDecisionResult:
     proposal = request.proposal
     passport = request.passport
     approval = request.approval
 
-    # 1. Validate Safety Passport before considering any approval.
+    # 1. Verify and validate Safety Passport before considering any approval.
+    signed_payload = build_runtime_passport_payload(passport)
+
     passport_result = validate_passport(
         passport_status=passport.status,
         passport_configuration_hash=passport.certified_configuration_hash,
         current_configuration_hash=passport.current_configuration_hash,
+        signed_payload=signed_payload,
+        signature=passport.signature,
+        signature_key_id=passport.signature_key_id,
+        signature_verifier=signature_verifier,
     )
 
     if passport_result.status == PassportValidationStatus.INVALID:
@@ -36,7 +47,30 @@ def evaluate_runtime_action(
             reasons=[passport_result.reason],
         )
 
-    # 2. Enforce passport tool boundaries.
+    # 2. Bind the proposed action to the signed Safety Passport.
+    if proposal.passport_id != passport.passport_id:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[
+                (
+                    "Proposed action passport_id does not match "
+                    "the signed Safety Passport."
+                )
+            ],
+        )
+
+    if proposal.agent_version_id != passport.agent_version_id:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[
+                (
+                    "Proposed action agent_version_id does not match "
+                    "the signed Safety Passport."
+                )
+            ],
+        )
+
+    # 3. Enforce passport tool boundaries.
     if proposal.tool_name in passport.prohibited_tools:
         return RuntimeDecisionResult(
             decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
@@ -55,7 +89,7 @@ def evaluate_runtime_action(
             ],
         )
 
-    # 3. Enforce deterministic permission contract.
+    # 4. Enforce deterministic permission contract.
     required_permissions = TOOL_PERMISSION_REQUIREMENTS.get(proposal.tool_name)
 
     if required_permissions is None:
@@ -77,7 +111,7 @@ def evaluate_runtime_action(
             ],
         )
 
-    # 4. High-risk irreversible actions require verified human approval.
+    # 5. High-risk irreversible actions require verified human approval.
     risk_level = proposal.risk_level.upper()
 
     if risk_level == "HIGH" and proposal.is_irreversible:
@@ -113,7 +147,7 @@ def evaluate_runtime_action(
                 ],
             )
 
-    # 5. Passport conditions still apply even after valid approval.
+    # 6. Passport conditions still apply even after valid approval.
     if proposal.tool_name in passport.conditional_tools:
         return RuntimeDecisionResult(
             decision=RuntimeDecision.ALLOW_WITH_CONDITIONS,

@@ -1,5 +1,7 @@
 from app.core.audit.runtime_recorder import create_runtime_audit_record
-from app.core.authorization.runtime_engine import evaluate_runtime_action
+from app.core.authorization.runtime_engine import (
+    evaluate_runtime_action as _evaluate_runtime_action,
+)
 from app.schemas.runtime import (
     ActionProposal,
     HumanApprovalContext,
@@ -7,6 +9,19 @@ from app.schemas.runtime import (
     RuntimeAuthorizationRequest,
     RuntimeDecision,
 )
+
+
+def _valid_signature(**kwargs) -> bool:
+    return True
+
+
+def evaluate_runtime_action(
+    request: RuntimeAuthorizationRequest,
+):
+    return _evaluate_runtime_action(
+        request,
+        signature_verifier=_valid_signature,
+    )
 
 
 def make_request(
@@ -33,13 +48,27 @@ def make_request(
             evidence={"source": "runtime-test"},
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status=passport_status,
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class=risk_level,
             allowed_tools=["read_documents", "deploy_service"],
             conditional_tools=[],
             prohibited_tools=["delete_records"],
             human_approvers=["reviewer@example.com"],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
         approval=approval,
     )

@@ -1,4 +1,9 @@
+import app.services.runtime_authorization as runtime_authorization_service
+import pytest
 from app.core.authorization.execution_store import get_execution_record
+from app.core.authorization.runtime_engine import (
+    evaluate_runtime_action as _evaluate_runtime_action,
+)
 from app.core.authorization.tool_gateway import reset_execution_records
 from app.db.base import Base
 from app.db.session import create_database_engine, create_session_factory
@@ -12,12 +17,36 @@ from app.schemas.runtime import (
     PassportContext,
     RuntimeAuthorizationRequest,
     RuntimeDecision,
+    RuntimeDecisionResult,
 )
 from app.schemas.tool_execution import (
     ToolExecutionRequest,
     ToolExecutionStatus,
 )
 from app.services.governed_workflow import run_governed_workflow
+
+
+def _valid_signature(**kwargs) -> bool:
+    return True
+
+
+@pytest.fixture(autouse=True)
+def _stub_kms_signature_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def evaluate_with_test_verifier(
+        request: RuntimeAuthorizationRequest,
+    ) -> RuntimeDecisionResult:
+        return _evaluate_runtime_action(
+            request,
+            signature_verifier=_valid_signature,
+        )
+
+    monkeypatch.setattr(
+        runtime_authorization_service,
+        "evaluate_runtime_action",
+        evaluate_with_test_verifier,
+    )
 
 
 def setup_function() -> None:
@@ -60,13 +89,27 @@ def test_safe_action_runs_end_to_end_and_is_audited(tmp_path) -> None:
             evidence={"source": "governed-e2e-test"},
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=["read_documents"],
             conditional_tools=[],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 
@@ -147,13 +190,27 @@ def test_authorized_tool_cannot_be_swapped_before_execution() -> None:
             risk_level="LOW",
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=["read_documents"],
             conditional_tools=[],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 
@@ -221,13 +278,27 @@ def test_conditional_authorization_executes_only_with_verified_conditions() -> N
             risk_level="LOW",
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=[],
             conditional_tools=["read_documents"],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 
@@ -289,13 +360,27 @@ def test_conditional_execution_failure_requires_human_review() -> None:
             risk_level="LOW",
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=[],
             conditional_tools=["read_documents"],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 
@@ -367,13 +452,27 @@ def test_reader_role_cannot_execute_send_message() -> None:
             risk_level="LOW",
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=["send_message"],
             conditional_tools=[],
             prohibited_tools=["delete_records"],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 

@@ -1,3 +1,8 @@
+import app.services.runtime_authorization as runtime_authorization_service
+import pytest
+from app.core.authorization.runtime_engine import (
+    evaluate_runtime_action as _evaluate_runtime_action,
+)
 from app.core.policy.hierarchy import (
     PolicyAuthority,
     PolicyProvenance,
@@ -11,8 +16,32 @@ from app.schemas.runtime import (
     PassportContext,
     RuntimeAuthorizationRequest,
     RuntimeDecision,
+    RuntimeDecisionResult,
 )
 from app.services.runtime_authorization import authorize_runtime_action
+
+
+def _valid_signature(**kwargs) -> bool:
+    return True
+
+
+@pytest.fixture(autouse=True)
+def _stub_kms_signature_verification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def evaluate_with_test_verifier(
+        request: RuntimeAuthorizationRequest,
+    ) -> RuntimeDecisionResult:
+        return _evaluate_runtime_action(
+            request,
+            signature_verifier=_valid_signature,
+        )
+
+    monkeypatch.setattr(
+        runtime_authorization_service,
+        "evaluate_runtime_action",
+        evaluate_with_test_verifier,
+    )
 
 
 def make_request() -> RuntimeAuthorizationRequest:
@@ -30,13 +59,27 @@ def make_request() -> RuntimeAuthorizationRequest:
             evidence={"source": "service-test"},
         ),
         passport=PassportContext(
+            passport_id="passport-001",
+            organization_id="org-001",
+            agent_version_id="version-001",
             status="ACTIVE",
             certified_configuration_hash="abc123",
             current_configuration_hash="abc123",
+            policy_version="policy-v1",
+            risk_class="LOW",
             allowed_tools=["read_documents"],
             conditional_tools=[],
             prohibited_tools=[],
             human_approvers=[],
+            issued_at="2026-09-13T21:22:26+00:00",
+            signature_key_id=(
+                "projects/safetygate-atoosa-2026/"
+                "locations/global/"
+                "keyRings/safetygate-dev/"
+                "cryptoKeys/safety-passport-signing/"
+                "cryptoKeyVersions/1"
+            ),
+            signature="test-signature",
         ),
     )
 
