@@ -30,4 +30,9 @@ class RuntimeAuditRecord(BaseModel):
     conditions: list[str] = Field(default_factory=list)
 
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+    principal_identity: str | None = None
+    principal_roles: list[str] = Field(default_factory=list)
+    enforcement_reasons: list[str] = Field(default_factory=list)
+
     execution_outcome: str | None = None

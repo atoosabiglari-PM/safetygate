@@ -389,3 +389,9 @@ def test_reader_role_cannot_execute_send_message() -> None:
 
     assert outcome.audit is not None
     assert outcome.audit.execution_outcome == "FAILED_CLOSED"
+    assert outcome.audit.principal_identity == "reader@example.com"
+    assert outcome.audit.principal_roles == ["READER"]
+    assert any(
+        "does not hold a role authorized" in reason
+        for reason in outcome.audit.enforcement_reasons
+    )

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from app.core.admission.engine import evaluate_admission
 from app.core.authorization.condition_enforcement import (
@@ -60,6 +60,18 @@ def run_governed_workflow(
 
     authorization = authorize_runtime_action(runtime_request)
 
+    authorization = replace(
+        authorization,
+        audit=authorization.audit.model_copy(
+            update={
+                "principal_identity": principal.identity,
+                "principal_roles": [
+                    role.value for role in principal.roles
+                ],
+            }
+        ),
+    )
+
     if authorization.decision.decision not in {
         RuntimeDecision.ALLOW,
         RuntimeDecision.ALLOW_WITH_CONDITIONS,
@@ -92,7 +104,10 @@ def run_governed_workflow(
         )
 
         final_audit = authorization.audit.model_copy(
-            update={"execution_outcome": execution.status.value}
+            update={
+                "execution_outcome": execution.status.value,
+                "enforcement_reasons": binding_reasons,
+            }
         )
 
         return GovernedWorkflowOutcome(
@@ -118,7 +133,10 @@ def run_governed_workflow(
         )
 
         final_audit = authorization.audit.model_copy(
-            update={"execution_outcome": execution.status.value}
+            update={
+                "execution_outcome": execution.status.value,
+                "enforcement_reasons": role_authorization.reasons,
+            }
         )
 
         return GovernedWorkflowOutcome(
