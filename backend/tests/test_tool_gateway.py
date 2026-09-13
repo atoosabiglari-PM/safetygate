@@ -95,3 +95,83 @@ def test_idempotency_key_reuse_with_different_payload_fails_closed() -> None:
         "different action payload" in reason.lower()
         for reason in second.reasons
     )
+
+
+def test_safe_read_tool_uses_authorized_fallback() -> None:
+    def failing_executor(tool_name, arguments):
+        raise TimeoutError("primary unavailable")
+
+    def fallback_executor(tool_name, arguments):
+        return {
+            "tool": tool_name,
+            "document_id": arguments["document_id"],
+            "source": "fallback",
+        }
+
+    request = ToolExecutionRequest(
+        action_id="action-fallback-001",
+        idempotency_key="idem-fallback-001",
+        tool_name="read_documents",
+        arguments={"document_id": "doc-123"},
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=failing_executor,
+        fallback_executor=fallback_executor,
+    )
+
+    assert result.status == ToolExecutionStatus.FALLBACK_EXECUTED
+    assert result.fallback_used is True
+    assert result.output["source"] == "fallback"
+
+
+def test_consequential_tool_does_not_use_automatic_fallback() -> None:
+    def failing_executor(tool_name, arguments):
+        raise TimeoutError("primary unavailable")
+
+    def fallback_executor(tool_name, arguments):
+        return {"unexpected": True}
+
+    request = ToolExecutionRequest(
+        action_id="action-fallback-002",
+        idempotency_key="idem-fallback-002",
+        tool_name="send_message",
+        arguments={
+            "recipient": "reviewer@example.com",
+            "message": "Do not duplicate this action",
+        },
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=failing_executor,
+        fallback_executor=fallback_executor,
+    )
+
+    assert result.status == ToolExecutionStatus.FAILED_CLOSED
+    assert result.fallback_used is False
+
+
+def test_failed_safe_fallback_fails_closed() -> None:
+    def failing_executor(tool_name, arguments):
+        raise TimeoutError("primary unavailable")
+
+    def failing_fallback(tool_name, arguments):
+        raise RuntimeError("fallback unavailable")
+
+    request = ToolExecutionRequest(
+        action_id="action-fallback-003",
+        idempotency_key="idem-fallback-003",
+        tool_name="read_documents",
+        arguments={"document_id": "doc-456"},
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=failing_executor,
+        fallback_executor=failing_fallback,
+    )
+
+    assert result.status == ToolExecutionStatus.FAILED_CLOSED
+    assert result.fallback_used is True
