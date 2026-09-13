@@ -1,15 +1,57 @@
 from app.core.admission.tool_registry import TOOL_PERMISSION_REQUIREMENTS
+from app.core.recertification.passport_validator import (
+    PassportValidationStatus,
+    validate_passport,
+)
 from app.schemas.runtime import (
-    ActionProposal,
+    RuntimeAuthorizationRequest,
     RuntimeDecision,
     RuntimeDecisionResult,
 )
 
 
-PROHIBITED_RUNTIME_TOOLS = {"delete_records"}
+def evaluate_runtime_action(
+    request: RuntimeAuthorizationRequest,
+) -> RuntimeDecisionResult:
+    proposal = request.proposal
+    passport = request.passport
 
+    passport_result = validate_passport(
+        passport_status=passport.status,
+        passport_configuration_hash=passport.certified_configuration_hash,
+        current_configuration_hash=passport.current_configuration_hash,
+    )
 
-def evaluate_runtime_action(proposal: ActionProposal) -> RuntimeDecisionResult:
+    if passport_result.status == PassportValidationStatus.INVALID:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[passport_result.reason],
+        )
+
+    if passport_result.status == PassportValidationStatus.RECERTIFICATION_REQUIRED:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[passport_result.reason],
+        )
+
+    if proposal.tool_name in passport.prohibited_tools:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[
+                f"Tool '{proposal.tool_name}' is prohibited by the Safety Passport."
+            ],
+        )
+
+    passport_tools = set(passport.allowed_tools) | set(passport.conditional_tools)
+
+    if proposal.tool_name not in passport_tools:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
+            reasons=[
+                f"Tool '{proposal.tool_name}' is not authorized by the Safety Passport."
+            ],
+        )
+
     required_permissions = TOOL_PERMISSION_REQUIREMENTS.get(proposal.tool_name)
 
     if required_permissions is None:
@@ -17,14 +59,6 @@ def evaluate_runtime_action(proposal: ActionProposal) -> RuntimeDecisionResult:
             decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
             reasons=[
                 f"Tool '{proposal.tool_name}' has no registered permission contract."
-            ],
-        )
-
-    if proposal.tool_name in PROHIBITED_RUNTIME_TOOLS:
-        return RuntimeDecisionResult(
-            decision=RuntimeDecision.NON_OVERRIDABLE_DENY,
-            reasons=[
-                f"Tool '{proposal.tool_name}' is prohibited at runtime."
             ],
         )
 
@@ -36,6 +70,18 @@ def evaluate_runtime_action(proposal: ActionProposal) -> RuntimeDecisionResult:
             reasons=[
                 "Missing required permission(s): "
                 + ", ".join(sorted(missing_permissions))
+            ],
+        )
+
+    if proposal.tool_name in passport.conditional_tools:
+        return RuntimeDecisionResult(
+            decision=RuntimeDecision.ALLOW_WITH_CONDITIONS,
+            reasons=[
+                f"Tool '{proposal.tool_name}' is conditionally authorized by the Safety Passport."
+            ],
+            conditions=[
+                "Record full audit evidence.",
+                "Verify execution result.",
             ],
         )
 
@@ -64,6 +110,6 @@ def evaluate_runtime_action(proposal: ActionProposal) -> RuntimeDecisionResult:
     return RuntimeDecisionResult(
         decision=RuntimeDecision.ALLOW,
         reasons=[
-            "Runtime authorization checks passed."
+            "Passport, configuration, tool, permission, and runtime checks passed."
         ],
     )

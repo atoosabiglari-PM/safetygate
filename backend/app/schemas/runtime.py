@@ -26,6 +26,21 @@ class ActionProposal(BaseModel):
     evidence: dict = Field(default_factory=dict)
 
 
+class PassportContext(BaseModel):
+    status: str
+    certified_configuration_hash: str
+    current_configuration_hash: str
+
+    allowed_tools: list[str] = Field(default_factory=list)
+    conditional_tools: list[str] = Field(default_factory=list)
+    prohibited_tools: list[str] = Field(default_factory=list)
+
+
+class RuntimeAuthorizationRequest(BaseModel):
+    proposal: ActionProposal
+    passport: PassportContext
+
+
 class RuntimeDecisionResult(BaseModel):
     decision: RuntimeDecision
     reasons: list[str] = Field(default_factory=list)
