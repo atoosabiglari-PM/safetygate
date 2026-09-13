@@ -15,6 +15,7 @@ from app.schemas.runtime import (
 from app.schemas.tool_execution import (
     ToolExecutionRequest,
     ToolExecutionResult,
+    ToolExecutionStatus,
 )
 from app.services.runtime_authorization import (
     RuntimeAuthorizationOutcome,
@@ -57,6 +58,39 @@ def run_governed_workflow(
             authorization=authorization,
             execution=None,
             audit=authorization.audit,
+        )
+
+    binding_reasons: list[str] = []
+
+    if tool_request.action_id != runtime_request.proposal.action_id:
+        binding_reasons.append(
+            "Execution action_id does not match the authorized action_id."
+        )
+
+    if tool_request.tool_name != runtime_request.proposal.tool_name:
+        binding_reasons.append(
+            "Execution tool_name does not match the authorized tool_name."
+        )
+
+    if binding_reasons:
+        execution = ToolExecutionResult(
+            status=ToolExecutionStatus.FAILED_CLOSED,
+            tool_name=tool_request.tool_name,
+            reasons=binding_reasons,
+            execution_attempted=False,
+        )
+
+        final_audit = authorization.audit.model_copy(
+            update={
+                "execution_outcome": execution.status.value,
+            }
+        )
+
+        return GovernedWorkflowOutcome(
+            admission=admission,
+            authorization=authorization,
+            execution=execution,
+            audit=final_audit,
         )
 
     execution = execute_governed_tool(tool_request)
