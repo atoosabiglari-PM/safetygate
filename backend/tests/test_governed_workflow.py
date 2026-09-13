@@ -1,4 +1,7 @@
+from app.core.authorization.execution_store import get_execution_record
 from app.core.authorization.tool_gateway import reset_execution_records
+from app.db.base import Base
+from app.db.session import create_database_engine, create_session_factory
 from app.schemas.admission import (
     AdmissionDecision,
     AgentAdmissionRequest,
@@ -21,7 +24,14 @@ def setup_function() -> None:
     reset_execution_records()
 
 
-def test_safe_action_runs_end_to_end_and_is_audited() -> None:
+def test_safe_action_runs_end_to_end_and_is_audited(tmp_path) -> None:
+    database_path = tmp_path / "governed-workflow.db"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+    session = session_factory()
+
     admission_request = AgentAdmissionRequest(
         agent_name="research-agent",
         owner_identity="owner@example.com",
@@ -75,6 +85,7 @@ def test_safe_action_runs_end_to_end_and_is_audited() -> None:
             identity="reader@example.com",
             roles=[RuntimeRole.READER],
         ),
+        session=session,
     )
 
     assert outcome.admission.decision == AdmissionDecision.PASS
@@ -93,6 +104,19 @@ def test_safe_action_runs_end_to_end_and_is_audited() -> None:
     assert outcome.audit.decision == "ALLOW"
     assert outcome.audit.execution_outcome == "EXECUTED"
     assert outcome.audit.evidence["source"] == "governed-e2e-test"
+
+    record = get_execution_record(
+        session,
+        idempotency_key="idem-e2e-001",
+    )
+
+    assert record is not None
+    assert record.action_id == "action-e2e-001"
+    assert record.status == "EXECUTED"
+    assert record.result_payload["execution_attempted"] is True
+
+    session.close()
+    engine.dispose()
 
 
 def test_authorized_tool_cannot_be_swapped_before_execution() -> None:

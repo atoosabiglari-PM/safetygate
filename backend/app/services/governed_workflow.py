@@ -1,5 +1,7 @@
 from dataclasses import dataclass, replace
 
+from sqlalchemy.orm import Session
+
 from app.core.admission.engine import evaluate_admission
 from app.core.authorization.condition_enforcement import (
     validate_supported_conditions,
@@ -47,6 +49,7 @@ def run_governed_workflow(
     runtime_request: RuntimeAuthorizationRequest,
     tool_request: ToolExecutionRequest,
     principal: PrincipalContext,
+    session: Session | None = None,
 ) -> GovernedWorkflowOutcome:
     admission = evaluate_admission(admission_request)
 
@@ -170,7 +173,7 @@ def run_governed_workflow(
                 audit=final_audit,
             )
 
-    execution = execute_governed_tool(tool_request)
+    execution = execute_governed_tool(tool_request, session=session)
 
     final_audit = authorization.audit.model_copy(
         update={"execution_outcome": execution.status.value}
