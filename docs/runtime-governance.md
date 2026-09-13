@@ -60,7 +60,19 @@ Human approval and execution authority are intentionally separate concepts.
 
 An authorized approver may approve an action where policy permits, but approval alone does not grant permission to execute a tool.
 
-The current prototype trusts caller-provided principal identity. Production deployment requires integration with a trusted identity provider.
+SafetyGate includes a trusted OIDC/JWT identity-verification path.
+
+The verifier validates signed identity evidence including token signature, issuer, audience, expiration, and required identity claims.
+
+JWKS key selection supports identity-provider signing-key rotation through `kid`.
+
+SafetyGate role assignment uses the verified `(issuer, subject)` identity pair. Email is informational and is not the authorization key.
+
+Roles contained inside a token are not automatically trusted. SafetyGate-owned role assignment determines runtime authority.
+
+The lower-level governed workflow can still accept a `PrincipalContext` for internal composition and tests. A production public boundary should derive that principal only from verified identity evidence.
+
+Production deployment still requires binding issuer, audience, and JWKS configuration to a specific trusted identity provider and exposing the verified path through the production API boundary.
 
 ## Permissions and Tool Contracts
 
@@ -228,6 +240,11 @@ Persistent audit entries capture governance evidence including:
 - runtime decision
 - reasons and conditions
 - evidence
+- controlling policy rule ID
+- policy authority
+- policy source name and version
+- policy source reference
+- considered competing policy rules
 - execution outcome
 
 Approval evidence is also stored persistently and is bound to the approved action and approver identity.
@@ -246,6 +263,14 @@ Non-sensitive governance context is preserved so evidence remains useful for rev
 
 Redaction tests verify that original secret values do not appear in serialized audit output.
 
+## Threat Model
+
+The SafetyGate security assumptions, trust boundaries, threat actors, implemented controls, residual risks, and explicit non-goals are documented in:
+
+`docs/threat-model.md`
+
+The threat model should be reviewed whenever a new external authority, tool boundary, identity source, policy source, or execution mechanism is introduced.
+
 ## Memory Governance
 
 Memory governance is documented separately in:
@@ -258,20 +283,24 @@ Memory controls include scope, retention, update policy, type allowlists and pro
 
 ## Current Scope
 
-The current implementation is a deterministic governance kernel with persistent runtime evidence, durable execution claims, failure handling, crash-recovery controls, and concurrency protection.
+The current implementation is a deterministic governance kernel with persistent runtime evidence, durable execution claims, failure handling, crash-recovery controls, concurrency protection, OIDC/JWT identity verification, trusted role resolution, material-change recertification, and policy provenance with deterministic rule hierarchy.
 
 It should not yet be described as a complete production runtime control plane.
 
-The default tool executor remains simulated. Production deployment still requires real authenticated identity, production tool or MCP adapters, and infrastructure hardening.
+The default tool executor remains simulated. The OIDC verification mechanism is implemented, but it is not yet bound to a specific production identity-provider configuration or public production API boundary.
+
+Policy hierarchy and provenance are implemented in the deterministic governance kernel, while external OPA/Rego policy-engine integration remains future work.
 
 Planned production capabilities include:
 
-- trusted identity-provider integration
-- formal policy provenance and rule hierarchy
-- cryptographically signed Safety Passports
-- external policy-engine integration
+- production identity-provider configuration and authenticated API boundary
+- cryptographically signed Safety Passports using KMS
+- external OPA/Rego policy-engine integration
 - real MCP and production tool adapters
-- production database and cloud deployment
+- PostgreSQL / Cloud SQL production validation
+- hardened Cloud Run deployment
+- Secret Manager and production credential management
+- monitoring and incident-response integration
 - operator-facing API and user interface
 
 ## Validation
