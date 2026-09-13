@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 
 from app.core.admission.engine import evaluate_admission
+from app.core.authorization.condition_enforcement import (
+    validate_supported_conditions,
+    verify_execution_conditions,
+)
 from app.core.authorization.tool_gateway import execute_governed_tool
 from app.schemas.admission import (
     AdmissionDecision,
@@ -81,9 +85,7 @@ def run_governed_workflow(
         )
 
         final_audit = authorization.audit.model_copy(
-            update={
-                "execution_outcome": execution.status.value,
-            }
+            update={"execution_outcome": execution.status.value}
         )
 
         return GovernedWorkflowOutcome(
@@ -93,13 +95,56 @@ def run_governed_workflow(
             audit=final_audit,
         )
 
+    conditions = authorization.decision.conditions
+
+    if authorization.decision.decision == RuntimeDecision.ALLOW_WITH_CONDITIONS:
+        supported = validate_supported_conditions(conditions)
+
+        if not supported.satisfied:
+            execution = ToolExecutionResult(
+                status=ToolExecutionStatus.FAILED_CLOSED,
+                tool_name=tool_request.tool_name,
+                reasons=supported.reasons,
+                execution_attempted=False,
+            )
+
+            final_audit = authorization.audit.model_copy(
+                update={"execution_outcome": execution.status.value}
+            )
+
+            return GovernedWorkflowOutcome(
+                admission=admission,
+                authorization=authorization,
+                execution=execution,
+                audit=final_audit,
+            )
+
     execution = execute_governed_tool(tool_request)
 
     final_audit = authorization.audit.model_copy(
-        update={
-            "execution_outcome": execution.status.value,
-        }
+        update={"execution_outcome": execution.status.value}
     )
+
+    if authorization.decision.decision == RuntimeDecision.ALLOW_WITH_CONDITIONS:
+        verification = verify_execution_conditions(
+            conditions=conditions,
+            audit=final_audit,
+            execution=execution,
+        )
+
+        if not verification.satisfied:
+            execution = ToolExecutionResult(
+                status=ToolExecutionStatus.HUMAN_REVIEW_REQUIRED,
+                tool_name=tool_request.tool_name,
+                output=execution.output,
+                reasons=verification.reasons,
+                execution_attempted=execution.execution_attempted,
+                fallback_used=execution.fallback_used,
+            )
+
+            final_audit = final_audit.model_copy(
+                update={"execution_outcome": execution.status.value}
+            )
 
     return GovernedWorkflowOutcome(
         admission=admission,
