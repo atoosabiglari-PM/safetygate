@@ -75,3 +75,27 @@ def test_non_overridable_failure_takes_precedence() -> None:
 
     assert result.decision == AdmissionDecision.NON_OVERRIDABLE_FAIL
     assert len(result.reasons) == 2
+
+
+def test_tool_without_required_permission_is_non_overridable() -> None:
+    result = evaluate_admission(
+        make_request(
+            tools=["send_message"],
+            permissions=["documents:read"],
+        )
+    )
+
+    assert result.decision == AdmissionDecision.NON_OVERRIDABLE_FAIL
+    assert any("messages:send" in reason for reason in result.reasons)
+
+
+def test_unknown_tool_is_non_overridable() -> None:
+    result = evaluate_admission(
+        make_request(
+            tools=["mystery_tool"],
+            permissions=["documents:read"],
+        )
+    )
+
+    assert result.decision == AdmissionDecision.NON_OVERRIDABLE_FAIL
+    assert any("no registered permission contract" in reason.lower() for reason in result.reasons)

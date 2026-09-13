@@ -1,3 +1,4 @@
+from app.core.admission.tool_registry import TOOL_PERMISSION_REQUIREMENTS
 from app.schemas.admission import (
     AdmissionDecision,
     AdmissionResult,
@@ -25,6 +26,25 @@ def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
             + ", ".join(sorted(prohibited_conflicts))
         )
 
+    declared_permissions = set(request.permissions)
+
+    for tool in request.tools:
+        required_permissions = TOOL_PERMISSION_REQUIREMENTS.get(tool)
+
+        if required_permissions is None:
+            non_overridable_reasons.append(
+                f"Tool '{tool}' has no registered permission contract."
+            )
+            continue
+
+        missing_permissions = required_permissions - declared_permissions
+
+        if missing_permissions:
+            non_overridable_reasons.append(
+                f"Tool '{tool}' requires missing permission(s): "
+                + ", ".join(sorted(missing_permissions))
+            )
+
     if request.autonomy_level.upper() in HIGH_RISK_AUTONOMY_LEVELS:
         if not request.human_approval_actions:
             correctable_reasons.append(
@@ -47,6 +67,6 @@ def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
         decision=AdmissionDecision.PASS,
         reasons=[
             "Agent identity, ownership, purpose, autonomy, jurisdiction, "
-            "and declared boundaries passed admission checks."
+            "tool permissions, and declared boundaries passed admission checks."
         ],
     )
