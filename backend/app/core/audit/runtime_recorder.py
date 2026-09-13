@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from app.core.audit.redaction import redact_sensitive_data
 from app.schemas.audit import RuntimeAuditRecord
 from app.schemas.runtime import (
     RuntimeAuthorizationRequest,
@@ -36,6 +37,6 @@ def create_runtime_audit_record(
         decision=result.decision.value,
         reasons=result.reasons,
         conditions=result.conditions,
-        evidence=proposal.evidence,
+        evidence=redact_sensitive_data(proposal.evidence),
         execution_outcome=execution_outcome,
     )

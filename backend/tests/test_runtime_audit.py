@@ -107,3 +107,31 @@ def test_hard_deny_creates_audit_record() -> None:
     assert record.decision == "NON_OVERRIDABLE_DENY"
     assert record.passport_status == "REVOKED"
     assert record.reasons
+
+
+def test_audit_redacts_secrets_but_preserves_useful_evidence() -> None:
+    request = make_request()
+
+    request.proposal.evidence = {
+        "source": "audit-redaction-test",
+        "document_id": "doc-001",
+        "api_key": "SUPER-SECRET",
+        "nested": {
+            "authorization": "Bearer abc123",
+            "result_code": "OK",
+        },
+    }
+
+    result = evaluate_runtime_action(request)
+    record = create_runtime_audit_record(request, result)
+
+    assert record.evidence["source"] == "audit-redaction-test"
+    assert record.evidence["document_id"] == "doc-001"
+    assert record.evidence["api_key"] == "[REDACTED]"
+    assert record.evidence["nested"]["authorization"] == "[REDACTED]"
+    assert record.evidence["nested"]["result_code"] == "OK"
+
+    serialized = record.model_dump_json()
+
+    assert "SUPER-SECRET" not in serialized
+    assert "Bearer abc123" not in serialized
