@@ -1,15 +1,13 @@
 from logging.config import fileConfig
 
-from alembic import context
-from sqlalchemy import pool
-from sqlalchemy.engine import Connection
-
 from app.db.base import Base
 from app.db.session import create_database_engine, get_database_url
 
 # Import all model modules so their tables register with Base.metadata.
-from app.models import certification, execution, governance  # noqa: F401
+from app.models import audit, certification, execution, governance  # noqa: F401
+from sqlalchemy.engine import Connection
 
+from alembic import context
 
 config = context.config
 

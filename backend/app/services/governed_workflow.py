@@ -3,6 +3,10 @@ from dataclasses import dataclass, replace
 from sqlalchemy.orm import Session
 
 from app.core.admission.engine import evaluate_admission
+from app.core.audit.persistence import (
+    save_approval_evidence,
+    save_runtime_audit_entry,
+)
 from app.core.authorization.condition_enforcement import (
     validate_supported_conditions,
     verify_execution_conditions,
@@ -33,6 +37,21 @@ from app.services.runtime_authorization import (
     RuntimeAuthorizationOutcome,
     authorize_runtime_action,
 )
+
+
+def _persist_runtime_evidence(
+    *,
+    session: Session | None,
+    runtime_request: RuntimeAuthorizationRequest,
+    audit: RuntimeAuditRecord,
+) -> None:
+    if session is None:
+        return
+
+    if runtime_request.approval is not None:
+        save_approval_evidence(session, runtime_request.approval)
+
+    save_runtime_audit_entry(session, audit)
 
 
 @dataclass(frozen=True)
@@ -79,6 +98,12 @@ def run_governed_workflow(
         RuntimeDecision.ALLOW,
         RuntimeDecision.ALLOW_WITH_CONDITIONS,
     }:
+        _persist_runtime_evidence(
+            session=session,
+            runtime_request=runtime_request,
+            audit=authorization.audit,
+        )
+
         return GovernedWorkflowOutcome(
             admission=admission,
             authorization=authorization,
@@ -113,6 +138,12 @@ def run_governed_workflow(
             }
         )
 
+        _persist_runtime_evidence(
+            session=session,
+            runtime_request=runtime_request,
+            audit=final_audit,
+        )
+
         return GovernedWorkflowOutcome(
             admission=admission,
             authorization=authorization,
@@ -142,6 +173,12 @@ def run_governed_workflow(
             }
         )
 
+        _persist_runtime_evidence(
+            session=session,
+            runtime_request=runtime_request,
+            audit=final_audit,
+        )
+
         return GovernedWorkflowOutcome(
             admission=admission,
             authorization=authorization,
@@ -164,6 +201,12 @@ def run_governed_workflow(
 
             final_audit = authorization.audit.model_copy(
                 update={"execution_outcome": execution.status.value}
+            )
+
+            _persist_runtime_evidence(
+                session=session,
+                runtime_request=runtime_request,
+                audit=final_audit,
             )
 
             return GovernedWorkflowOutcome(
@@ -199,6 +242,12 @@ def run_governed_workflow(
             final_audit = final_audit.model_copy(
                 update={"execution_outcome": execution.status.value}
             )
+
+    _persist_runtime_evidence(
+        session=session,
+        runtime_request=runtime_request,
+        audit=final_audit,
+    )
 
     return GovernedWorkflowOutcome(
         admission=admission,
