@@ -12,6 +12,7 @@ dependencies = [
     "alembic",
     "psycopg[binary]",
     "httpx",
+    "PyJWT[crypto]>=2.9",
 ]
 
 [project.optional-dependencies]
