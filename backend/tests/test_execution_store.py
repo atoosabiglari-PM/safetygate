@@ -329,3 +329,103 @@ def test_gateway_converts_stale_pending_to_uncertain_without_reexecution(
         assert calls["count"] == 0
 
     engine.dispose()
+
+
+def test_simultaneous_callers_execute_tool_only_once(tmp_path) -> None:
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier, Event, Lock
+
+    from app.core.authorization.tool_gateway import execute_governed_tool
+    from app.schemas.tool_execution import (
+        ToolExecutionRequest,
+        ToolExecutionStatus,
+    )
+
+    database_path = tmp_path / "simultaneous-race.db"
+    database_url = f"sqlite+pysqlite:///{database_path}"
+
+    engine = create_database_engine(database_url)
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    request = ToolExecutionRequest(
+        action_id="action-race-001",
+        idempotency_key="idem-race-001",
+        tool_name="send_message",
+        arguments={
+            "recipient": "reviewer@example.com",
+            "message": "Execute exactly once.",
+        },
+    )
+
+    start_barrier = Barrier(2)
+    executor_started = Event()
+    release_executor = Event()
+    counter_lock = Lock()
+    calls = {"count": 0}
+
+    def executor(tool_name, arguments):
+        with counter_lock:
+            calls["count"] += 1
+
+        executor_started.set()
+
+        if not release_executor.wait(timeout=5):
+            raise TimeoutError("Test executor release timed out.")
+
+        return {
+            "tool": tool_name,
+            "recipient": arguments["recipient"],
+        }
+
+    def worker():
+        with session_factory() as session:
+            start_barrier.wait(timeout=5)
+
+            return execute_governed_tool(
+                request,
+                executor=executor,
+                session=session,
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [
+            pool.submit(worker),
+            pool.submit(worker),
+        ]
+
+        assert executor_started.wait(timeout=5)
+
+        deadline = time.monotonic() + 5
+        while (
+            not any(future.done() for future in futures)
+            and time.monotonic() < deadline
+        ):
+            time.sleep(0.01)
+
+        assert any(future.done() for future in futures)
+
+        with counter_lock:
+            assert calls["count"] == 1
+
+        release_executor.set()
+
+        results = [
+            future.result(timeout=5)
+            for future in futures
+        ]
+
+    statuses = sorted(result.status.value for result in results)
+
+    assert statuses == sorted(
+        [
+            ToolExecutionStatus.EXECUTED.value,
+            ToolExecutionStatus.DUPLICATE_SUPPRESSED.value,
+        ]
+    )
+
+    with counter_lock:
+        assert calls["count"] == 1
+
+    engine.dispose()
