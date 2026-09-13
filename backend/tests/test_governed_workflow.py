@@ -47,7 +47,7 @@ def test_safe_action_runs_end_to_end_and_is_audited() -> None:
             requested_permissions=["documents:read"],
             is_irreversible=False,
             risk_level="LOW",
-            evidence={"source": "week5-e2e-test"},
+            evidence={"source": "governed-e2e-test"},
         ),
         passport=PassportContext(
             status="ACTIVE",
@@ -92,7 +92,7 @@ def test_safe_action_runs_end_to_end_and_is_audited() -> None:
     assert outcome.audit.action_id == "action-e2e-001"
     assert outcome.audit.decision == "ALLOW"
     assert outcome.audit.execution_outcome == "EXECUTED"
-    assert outcome.audit.evidence["source"] == "week5-e2e-test"
+    assert outcome.audit.evidence["source"] == "governed-e2e-test"
 
 
 def test_authorized_tool_cannot_be_swapped_before_execution() -> None:
