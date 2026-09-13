@@ -5,6 +5,7 @@ from app.core.authorization.condition_enforcement import (
     validate_supported_conditions,
     verify_execution_conditions,
 )
+from app.core.authorization.role_policy import authorize_role
 from app.core.authorization.tool_gateway import execute_governed_tool
 from app.schemas.admission import (
     AdmissionDecision,
@@ -12,6 +13,11 @@ from app.schemas.admission import (
     AgentAdmissionRequest,
 )
 from app.schemas.audit import RuntimeAuditRecord
+from app.schemas.roles import (
+    PrincipalContext,
+    RoleAuthorizationRequest,
+    RoleDecision,
+)
 from app.schemas.runtime import (
     RuntimeAuthorizationRequest,
     RuntimeDecision,
@@ -40,6 +46,7 @@ def run_governed_workflow(
     admission_request: AgentAdmissionRequest,
     runtime_request: RuntimeAuthorizationRequest,
     tool_request: ToolExecutionRequest,
+    principal: PrincipalContext,
 ) -> GovernedWorkflowOutcome:
     admission = evaluate_admission(admission_request)
 
@@ -81,6 +88,32 @@ def run_governed_workflow(
             status=ToolExecutionStatus.FAILED_CLOSED,
             tool_name=tool_request.tool_name,
             reasons=binding_reasons,
+            execution_attempted=False,
+        )
+
+        final_audit = authorization.audit.model_copy(
+            update={"execution_outcome": execution.status.value}
+        )
+
+        return GovernedWorkflowOutcome(
+            admission=admission,
+            authorization=authorization,
+            execution=execution,
+            audit=final_audit,
+        )
+
+    role_authorization = authorize_role(
+        RoleAuthorizationRequest(
+            principal=principal,
+            tool_name=runtime_request.proposal.tool_name,
+        )
+    )
+
+    if role_authorization.decision == RoleDecision.DENY:
+        execution = ToolExecutionResult(
+            status=ToolExecutionStatus.FAILED_CLOSED,
+            tool_name=tool_request.tool_name,
+            reasons=role_authorization.reasons,
             execution_attempted=False,
         )
 
