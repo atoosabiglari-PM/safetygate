@@ -30,6 +30,26 @@ def test_low_autonomy_agent_passes() -> None:
     assert result.decision == AdmissionDecision.PASS
 
 
+def test_whitespace_owner_identity_fails() -> None:
+    result = evaluate_admission(make_request(owner_identity="   "))
+
+    assert result.decision == AdmissionDecision.FAIL
+    assert any(
+        "accountable owner" in reason.lower()
+        for reason in result.reasons
+    )
+
+
+def test_whitespace_purpose_fails() -> None:
+    result = evaluate_admission(make_request(purpose="   "))
+
+    assert result.decision == AdmissionDecision.FAIL
+    assert any(
+        "valid purpose" in reason.lower()
+        for reason in result.reasons
+    )
+
+
 def test_high_autonomy_without_human_approval_fails() -> None:
     result = evaluate_admission(
         make_request(

@@ -5,13 +5,18 @@ from app.schemas.admission import (
     AgentAdmissionRequest,
 )
 
-
 HIGH_RISK_AUTONOMY_LEVELS = {"HIGH", "FULL", "UNBOUNDED"}
 
 
 def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
     non_overridable_reasons: list[str] = []
     correctable_reasons: list[str] = []
+
+    if not request.owner_identity.strip():
+        correctable_reasons.append("Agent must have an accountable owner.")
+
+    if not request.purpose.strip():
+        correctable_reasons.append("Agent must declare a valid purpose.")
 
     if not request.jurisdictions:
         non_overridable_reasons.append(
@@ -45,11 +50,13 @@ def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
                 + ", ".join(sorted(missing_permissions))
             )
 
-    if request.autonomy_level.upper() in HIGH_RISK_AUTONOMY_LEVELS:
-        if not request.human_approval_actions:
-            correctable_reasons.append(
-                "High-autonomy agents must declare actions requiring human approval."
-            )
+    if (
+        request.autonomy_level.upper() in HIGH_RISK_AUTONOMY_LEVELS
+        and not request.human_approval_actions
+    ):
+        correctable_reasons.append(
+            "High-autonomy agents must declare actions requiring human approval."
+        )
 
     if non_overridable_reasons:
         return AdmissionResult(
@@ -66,7 +73,9 @@ def evaluate_admission(request: AgentAdmissionRequest) -> AdmissionResult:
     return AdmissionResult(
         decision=AdmissionDecision.PASS,
         reasons=[
-            "Agent identity, ownership, purpose, autonomy, jurisdiction, "
-            "tool permissions, and declared boundaries passed admission checks."
+            (
+                "Agent identity, ownership, purpose, autonomy, jurisdiction, "
+                "tool permissions, and declared boundaries passed admission checks."
+            )
         ],
     )
