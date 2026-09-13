@@ -5,6 +5,11 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.authorization.execution_failure_handler import (
+    SAFE_AUTO_RETRY_TOOLS,
+    decide_execution_failure,
+)
+from app.schemas.failure import FailureDisposition, FailureType
 from app.schemas.tool_execution import (
     ToolExecutionRequest,
     ToolExecutionResult,
@@ -70,6 +75,7 @@ def execute_governed_tool(
     *,
     executor: ToolExecutor | None = None,
     fallback_executor: ToolExecutor | None = None,
+    max_attempts: int = 3,
 ) -> ToolExecutionResult:
     schema = TOOL_ARGUMENT_SCHEMAS.get(request.tool_name)
 
@@ -125,53 +131,128 @@ def execute_governed_tool(
     primary_executor = executor or _execute_simulated_tool
     validated_arguments = validated.model_dump()
 
-    try:
-        output = primary_executor(
-            request.tool_name,
-            validated_arguments,
-        )
-    except Exception as primary_error:
-        if (
-            request.tool_name not in SAFE_FALLBACK_TOOLS
-            or fallback_executor is None
-        ):
-            return ToolExecutionResult(
-                status=ToolExecutionStatus.FAILED_CLOSED,
-                tool_name=request.tool_name,
-                reasons=[
-                    "Primary tool execution failed and no authorized safe fallback was available.",
-                    str(primary_error),
-                ],
-                execution_attempted=True,
-            )
-
+    for attempt_number in range(1, max_attempts + 1):
         try:
-            fallback_output = fallback_executor(
+            output = primary_executor(
                 request.tool_name,
                 validated_arguments,
             )
-        except Exception as fallback_error:
+        except Exception as primary_error:
+            failure = decide_execution_failure(
+                action_id=request.action_id,
+                idempotency_key=request.idempotency_key,
+                tool_name=request.tool_name,
+                error=primary_error,
+                attempt_number=attempt_number,
+                max_attempts=max_attempts,
+            )
+
+            if failure.disposition == FailureDisposition.RETRY:
+                continue
+
+            if (
+                failure.disposition
+                == FailureDisposition.HUMAN_REVIEW_REQUIRED
+            ):
+                return ToolExecutionResult(
+                    status=ToolExecutionStatus.HUMAN_REVIEW_REQUIRED,
+                    tool_name=request.tool_name,
+                    reasons=[
+                        "Partial execution failure requires human review."
+                    ],
+                    execution_attempted=True,
+                )
+
+            if (
+                failure.failure_type
+                in {FailureType.TIMEOUT, FailureType.TRANSIENT}
+                and request.tool_name in SAFE_FALLBACK_TOOLS
+                and fallback_executor is not None
+            ):
+                try:
+                    fallback_output = fallback_executor(
+                        request.tool_name,
+                        validated_arguments,
+                    )
+                except Exception as fallback_error:
+                    fallback_failure = decide_execution_failure(
+                        action_id=request.action_id,
+                        idempotency_key=request.idempotency_key,
+                        tool_name=request.tool_name,
+                        error=fallback_error,
+                        attempt_number=1,
+                        max_attempts=1,
+                    )
+
+                    if (
+                        fallback_failure.disposition
+                        == FailureDisposition.HUMAN_REVIEW_REQUIRED
+                    ):
+                        return ToolExecutionResult(
+                            status=(
+                                ToolExecutionStatus.HUMAN_REVIEW_REQUIRED
+                            ),
+                            tool_name=request.tool_name,
+                            reasons=[
+                                "Fallback partially failed and requires human review."
+                            ],
+                            execution_attempted=True,
+                            fallback_used=True,
+                        )
+
+                    return ToolExecutionResult(
+                        status=ToolExecutionStatus.FAILED_CLOSED,
+                        tool_name=request.tool_name,
+                        reasons=[
+                            "Primary execution exhausted safe retries.",
+                            "Authorized fallback also failed.",
+                        ],
+                        execution_attempted=True,
+                        fallback_used=True,
+                    )
+
+                result = ToolExecutionResult(
+                    status=ToolExecutionStatus.FALLBACK_EXECUTED,
+                    tool_name=request.tool_name,
+                    output=fallback_output,
+                    reasons=[
+                        "Primary execution exhausted safe retries.",
+                        "Authorized safe fallback completed.",
+                    ],
+                    execution_attempted=True,
+                    fallback_used=True,
+                )
+
+                _EXECUTION_RECORDS[request.idempotency_key] = (
+                    fingerprint,
+                    result,
+                )
+
+                return result
+
             return ToolExecutionResult(
                 status=ToolExecutionStatus.FAILED_CLOSED,
                 tool_name=request.tool_name,
                 reasons=[
-                    "Primary execution failed.",
-                    "Authorized fallback execution also failed.",
-                    str(fallback_error),
+                    (
+                        "Execution failure was not eligible for "
+                        "automatic retry or fallback."
+                    )
                 ],
                 execution_attempted=True,
-                fallback_used=True,
             )
 
         result = ToolExecutionResult(
-            status=ToolExecutionStatus.FALLBACK_EXECUTED,
+            status=ToolExecutionStatus.EXECUTED,
             tool_name=request.tool_name,
-            output=fallback_output,
+            output=output,
             reasons=[
-                "Primary execution failed; authorized safe fallback completed."
+                (
+                    "Tool arguments validated and execution completed "
+                    f"on attempt {attempt_number}."
+                )
             ],
             execution_attempted=True,
-            fallback_used=True,
         )
 
         _EXECUTION_RECORDS[request.idempotency_key] = (
@@ -181,22 +262,12 @@ def execute_governed_tool(
 
         return result
 
-    result = ToolExecutionResult(
-        status=ToolExecutionStatus.EXECUTED,
+    return ToolExecutionResult(
+        status=ToolExecutionStatus.FAILED_CLOSED,
         tool_name=request.tool_name,
-        output=output,
-        reasons=[
-            "Tool arguments validated and execution completed."
-        ],
+        reasons=["Execution exhausted all permitted attempts."],
         execution_attempted=True,
     )
-
-    _EXECUTION_RECORDS[request.idempotency_key] = (
-        fingerprint,
-        result,
-    )
-
-    return result
 
 
 def reset_execution_records() -> None:

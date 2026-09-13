@@ -175,3 +175,95 @@ def test_failed_safe_fallback_fails_closed() -> None:
 
     assert result.status == ToolExecutionStatus.FAILED_CLOSED
     assert result.fallback_used is True
+
+
+from app.core.authorization.execution_failure_handler import (
+    PartialToolFailure,
+)
+
+
+def test_safe_read_retries_after_timeout_and_then_succeeds() -> None:
+    attempts = {"count": 0}
+
+    def flaky_executor(tool_name, arguments):
+        attempts["count"] += 1
+
+        if attempts["count"] == 1:
+            raise TimeoutError("temporary timeout")
+
+        return {
+            "tool": tool_name,
+            "document_id": arguments["document_id"],
+            "attempt": attempts["count"],
+        }
+
+    request = ToolExecutionRequest(
+        action_id="action-retry-001",
+        idempotency_key="idem-retry-001",
+        tool_name="read_documents",
+        arguments={"document_id": "doc-retry-001"},
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=flaky_executor,
+        max_attempts=3,
+    )
+
+    assert result.status == ToolExecutionStatus.EXECUTED
+    assert result.execution_attempted is True
+    assert attempts["count"] == 2
+    assert result.output["attempt"] == 2
+
+
+def test_partial_failure_requires_human_review_without_retry() -> None:
+    attempts = {"count": 0}
+
+    def partial_executor(tool_name, arguments):
+        attempts["count"] += 1
+        raise PartialToolFailure("remote operation partially completed")
+
+    request = ToolExecutionRequest(
+        action_id="action-partial-001",
+        idempotency_key="idem-partial-001",
+        tool_name="read_documents",
+        arguments={"document_id": "doc-partial-001"},
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=partial_executor,
+        max_attempts=3,
+    )
+
+    assert result.status == ToolExecutionStatus.HUMAN_REVIEW_REQUIRED
+    assert result.execution_attempted is True
+    assert attempts["count"] == 1
+
+
+def test_consequential_tool_timeout_is_not_automatically_retried() -> None:
+    attempts = {"count": 0}
+
+    def timeout_executor(tool_name, arguments):
+        attempts["count"] += 1
+        raise TimeoutError("delivery result unknown")
+
+    request = ToolExecutionRequest(
+        action_id="action-no-retry-001",
+        idempotency_key="idem-no-retry-001",
+        tool_name="send_message",
+        arguments={
+            "recipient": "reviewer@example.com",
+            "message": "Do not send this twice.",
+        },
+    )
+
+    result = execute_governed_tool(
+        request,
+        executor=timeout_executor,
+        max_attempts=3,
+    )
+
+    assert result.status == ToolExecutionStatus.FAILED_CLOSED
+    assert result.execution_attempted is True
+    assert attempts["count"] == 1
