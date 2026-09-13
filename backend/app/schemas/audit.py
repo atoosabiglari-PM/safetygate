@@ -35,4 +35,13 @@ class RuntimeAuditRecord(BaseModel):
     principal_roles: list[str] = Field(default_factory=list)
     enforcement_reasons: list[str] = Field(default_factory=list)
 
+    policy_rule_id: str | None = None
+    policy_authority: str | None = None
+    policy_source_name: str | None = None
+    policy_source_version: str | None = None
+    policy_source_reference: str | None = None
+    policy_considered_rules: list[dict[str, Any]] = Field(
+        default_factory=list
+    )
+
     execution_outcome: str | None = None

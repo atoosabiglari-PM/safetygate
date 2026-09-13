@@ -93,3 +93,64 @@ def test_approval_evidence_is_idempotent_and_tamper_detecting(tmp_path) -> None:
             save_approval_evidence(session, tampered)
 
     engine.dispose()
+
+
+def test_policy_provenance_is_persisted(tmp_path) -> None:
+    database_path = tmp_path / "policy-audit.db"
+    engine = create_database_engine(
+        f"sqlite+pysqlite:///{database_path}"
+    )
+    Base.metadata.create_all(engine)
+    session_factory = create_session_factory(engine)
+
+    record = RuntimeAuditRecord(
+        event_id="event-policy-001",
+        timestamp=datetime.now(UTC),
+        action_id="action-policy-001",
+        agent_id="agent-001",
+        agent_version_id="version-001",
+        passport_id="passport-001",
+        tool_name="deploy_service",
+        action_name="deploy",
+        requested_permissions=["deploy:write"],
+        passport_status="ACTIVE",
+        certified_configuration_hash="abc123",
+        current_configuration_hash="abc123",
+        decision="DENY",
+        reasons=["Mandatory policy rule denied the action."],
+        conditions=[],
+        evidence={},
+        policy_rule_id="LAW-DENY-001",
+        policy_authority="MANDATORY_LAW",
+        policy_source_name="Mandatory Law",
+        policy_source_version="2026-09",
+        policy_source_reference="law/example-section",
+        policy_considered_rules=[
+            {
+                "rule_id": "ORG-ALLOW-001",
+                "authority": "ORGANIZATION_POLICY",
+                "decision": "ALLOW",
+            },
+            {
+                "rule_id": "LAW-DENY-001",
+                "authority": "MANDATORY_LAW",
+                "decision": "DENY",
+            },
+        ],
+        execution_outcome="FAILED_CLOSED",
+    )
+
+    with session_factory() as session:
+        saved = save_runtime_audit_entry(session, record)
+
+        assert saved.policy_rule_id == "LAW-DENY-001"
+        assert saved.policy_authority == "MANDATORY_LAW"
+        assert saved.policy_source_name == "Mandatory Law"
+        assert saved.policy_source_version == "2026-09"
+        assert (
+            saved.policy_source_reference
+            == "law/example-section"
+        )
+        assert len(saved.policy_considered_rules) == 2
+
+    engine.dispose()

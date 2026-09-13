@@ -135,3 +135,64 @@ def test_audit_redacts_secrets_but_preserves_useful_evidence() -> None:
 
     assert "SUPER-SECRET" not in serialized
     assert "Bearer abc123" not in serialized
+
+
+def test_audit_records_policy_resolution_provenance() -> None:
+    from app.core.policy.hierarchy import (
+        PolicyAuthority,
+        PolicyProvenance,
+    )
+    from app.core.policy.resolver import (
+        PolicyRuleDecision,
+        resolve_policy_decisions,
+    )
+
+    request = make_request()
+    result = evaluate_runtime_action(request)
+
+    resolution = resolve_policy_decisions(
+        [
+            PolicyRuleDecision(
+                provenance=PolicyProvenance(
+                    rule_id="ORG-ALLOW-001",
+                    authority=PolicyAuthority.ORGANIZATION_POLICY,
+                    source_name="Organization Policy",
+                    source_version="2026-09",
+                ),
+                decision=RuntimeDecision.ALLOW,
+                reason="Organization policy permits the action.",
+            ),
+            PolicyRuleDecision(
+                provenance=PolicyProvenance(
+                    rule_id="LAW-DENY-001",
+                    authority=PolicyAuthority.MANDATORY_LAW,
+                    source_name="Mandatory Law",
+                    source_version="2026-09",
+                    source_reference="law/example-section",
+                ),
+                decision=RuntimeDecision.DENY,
+                reason="Mandatory law prohibits the action.",
+            ),
+        ]
+    )
+
+    record = create_runtime_audit_record(
+        request,
+        result,
+        policy_resolution=resolution,
+    )
+
+    assert record.policy_rule_id == "LAW-DENY-001"
+    assert record.policy_authority == "MANDATORY_LAW"
+    assert record.policy_source_name == "Mandatory Law"
+    assert record.policy_source_version == "2026-09"
+    assert record.policy_source_reference == "law/example-section"
+
+    assert len(record.policy_considered_rules) == 2
+    assert {
+        item["rule_id"]
+        for item in record.policy_considered_rules
+    } == {
+        "ORG-ALLOW-001",
+        "LAW-DENY-001",
+    }

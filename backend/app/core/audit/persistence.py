@@ -33,6 +33,12 @@ def save_runtime_audit_entry(
         principal_identity=record.principal_identity,
         principal_roles=record.principal_roles,
         enforcement_reasons=record.enforcement_reasons,
+        policy_rule_id=record.policy_rule_id,
+        policy_authority=record.policy_authority,
+        policy_source_name=record.policy_source_name,
+        policy_source_version=record.policy_source_version,
+        policy_source_reference=record.policy_source_reference,
+        policy_considered_rules=record.policy_considered_rules,
         execution_outcome=record.execution_outcome,
     )
 

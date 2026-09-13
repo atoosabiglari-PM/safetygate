@@ -91,6 +91,32 @@ class RuntimeAuditEntry(Base):
         nullable=False,
     )
 
+    policy_rule_id: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    policy_authority: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+    )
+    policy_source_name: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    policy_source_version: Mapped[str | None] = mapped_column(
+        String(255),
+        nullable=True,
+    )
+    policy_source_reference: Mapped[str | None] = mapped_column(
+        String(500),
+        nullable=True,
+    )
+    policy_considered_rules: Mapped[list] = mapped_column(
+        JSON,
+        default=list,
+        nullable=False,
+    )
+
     execution_outcome: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
