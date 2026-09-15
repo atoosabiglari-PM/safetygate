@@ -46,6 +46,7 @@ def create_runtime_audit_record(
                 "source_reference": rule.provenance.source_reference,
                 "decision": rule.decision.value,
                 "reason": rule.reason,
+                "conditions": list(rule.conditions),
             }
             for rule in policy_resolution.considered_rules
         ]

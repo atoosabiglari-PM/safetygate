@@ -5,6 +5,14 @@ from app.core.authorization.runtime_engine import (
     evaluate_runtime_action as _evaluate_runtime_action,
 )
 from app.core.authorization.tool_gateway import reset_execution_records
+from app.core.policy.hierarchy import (
+    PolicyAuthority,
+    PolicyProvenance,
+)
+from app.core.policy.resolver import (
+    PolicyRuleDecision,
+    resolve_policy_decisions,
+)
 from app.db.base import Base
 from app.db.session import create_database_engine, create_session_factory
 from app.schemas.admission import (
@@ -30,6 +38,24 @@ def _valid_signature(**kwargs) -> bool:
     return True
 
 
+def _allow_opa_policy():
+    return resolve_policy_decisions(
+        [
+            PolicyRuleDecision(
+                provenance=PolicyProvenance(
+                    rule_id="safetygate.runtime.default_allow",
+                    authority=PolicyAuthority.ORGANIZATION_POLICY,
+                    source_name="SafetyGate OPA runtime policy",
+                    source_version="v1",
+                    source_reference="policies/rego/runtime.rego",
+                ),
+                decision=RuntimeDecision.ALLOW,
+                reason="OPA policy adds no additional restriction.",
+            )
+        ]
+    )
+
+
 @pytest.fixture(autouse=True)
 def _stub_kms_signature_verification(
     monkeypatch: pytest.MonkeyPatch,
@@ -46,6 +72,13 @@ def _stub_kms_signature_verification(
         runtime_authorization_service,
         "evaluate_runtime_action",
         evaluate_with_test_verifier,
+    )
+
+
+    monkeypatch.setattr(
+        runtime_authorization_service,
+        "resolve_opa_runtime_policy",
+        lambda request: _allow_opa_policy(),
     )
 
 
