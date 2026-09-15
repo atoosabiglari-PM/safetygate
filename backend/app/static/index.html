@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafetyGate | AI Agent Governance</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SG</div>
+        <div>
+          <strong>SafetyGate</strong>
+          <span>Governance Console</span>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-item active">Overview</button>
+        <button class="nav-item">Register Agent</button>
+        <button class="nav-item">Admission</button>
+        <button class="nav-item">Safety Passport</button>
+        <button class="nav-item">Runtime</button>
+        <button class="nav-item">Audit</button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        Governance boundary active
+      </div>
+    </aside>
+
+    <main class="main" id="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AI GOVERNANCE CONTROL PLANE</p>
+          <h1>Client Portal</h1>
+          <p class="subtitle">
+            Register, certify, authorize and audit AI agents from one governed workflow.
+          </p>
+        </div>
+        <div class="top-actions">
+  <a class="primary-button portal-link" href="/operator">Operator Console</a>
+  <div class="environment">
+          <span>Environment</span>
+          <strong>Production</strong>
+        </div>
+</div>
+      </header>
+
+      <section class="metrics">
+        <article class="metric-card">
+          <span>Organization</span>
+          <strong id="metric-org">Not configured</strong>
+          <small>Tenant boundary</small>
+        </article>
+        <article class="metric-card">
+          <span>Agent Status</span>
+          <strong id="metric-agent">Not registered</strong>
+          <small>Lifecycle state</small>
+        </article>
+        <article class="metric-card">
+          <span>Safety Passport</span>
+          <strong id="metric-passport">Not issued</strong>
+          <small>Cryptographic authorization</small>
+        </article>
+        <article class="metric-card">
+          <span>Runtime Decision</span>
+          <strong id="metric-runtime">Awaiting action</strong>
+          <small>Fail-closed enforcement</small>
+        </article>
+      </section>
+
+      <section class="workflow">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">GOVERNED LIFECYCLE</p>
+            <h2>Agent activation workflow</h2>
+          </div>
+          <span class="secure-badge">No action without authorization</span>
+        </div>
+
+        <div class="steps">
+          <article class="step-card">
+            <span class="step-number">01</span>
+            <h3>Organization</h3>
+            <p>Create the client governance boundary.</p>
+            <span class="state pending">Pending</span>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">02</span>
+            <h3>Register Agent</h3>
+            <p>Declare identity, model, tools and permissions.</p>
+            <span class="state pending">Pending</span>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">03</span>
+            <h3>Admission</h3>
+            <p>Evaluate the agent against SafetyGate controls.</p>
+            <span class="state pending">Pending</span>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">04</span>
+            <h3>Safety Passport</h3>
+            <p>Issue signed authorization evidence.</p>
+            <span class="state pending">Pending</span>
+          </article>
+
+          <article class="step-card">
+            <span class="step-number">05</span>
+            <h3>Runtime Gate</h3>
+            <p>Authorize every consequential action before execution.</p>
+            <span class="state pending">Pending</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="control-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">CONTROL</p>
+              <h2>Start onboarding</h2>
+            </div>
+          </div>
+
+          <p>
+            SafetyGate binds agent identity, configuration, permissions,
+            policy and runtime evidence into one auditable authorization chain.
+          </p>
+
+          <button class="primary-button" id="start-onboarding">
+            Create organization
+          </button>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <div>
+              <p class="eyebrow">TRUST MODEL</p>
+              <h2>Authorization boundary</h2>
+            </div>
+          </div>
+
+          <div class="trust-flow">
+            <span>Agent Proposal</span>
+            <b>→</b>
+            <span>SafetyGate</span>
+            <b>→</b>
+            <span>Policy + Passport</span>
+            <b>→</b>
+            <span>Allow / Block</span>
+          </div>
+
+          <p class="muted">
+            Tool execution remains downstream of positive authorization evidence.
+          </p>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

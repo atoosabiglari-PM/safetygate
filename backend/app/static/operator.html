@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SafetyGate | Operator Console</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">SG</div>
+        <div>
+          <strong>SafetyGate</strong>
+          <span>Operator Console</span>
+        </div>
+      </div>
+
+      <nav>
+        <button class="nav-item active" data-view="overview">
+          Overview
+        </button>
+        <button class="nav-item" data-view="reviews">
+          Human Review
+        </button>
+        <button class="nav-item" data-view="audit">
+          Audit Explorer
+        </button>
+        <button class="nav-item" data-view="policy">
+          Policy & OPA
+        </button>
+      </nav>
+
+      <div class="sidebar-footer">
+        <span class="status-dot"></span>
+        Enforcement boundary active
+      </div>
+    </aside>
+
+    <main class="main" id="main-content">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">SAFETYGATE OPERATIONS</p>
+          <h1>Operator Console</h1>
+          <p class="subtitle">
+            Review runtime decisions, human escalations,
+            audit evidence and policy provenance.
+          </p>
+        </div>
+
+        <a class="primary-button portal-link" href="/portal">
+          Client Portal
+        </a>
+      </header>
+
+      <section class="metrics">
+        <article class="metric-card">
+          <span>Total Agents</span>
+          <strong id="operator-agents">0</strong>
+          <small>Registered agents</small>
+        </article>
+
+        <article class="metric-card">
+          <span>Active Agents</span>
+          <strong id="operator-active">0</strong>
+          <small>Certified and active</small>
+        </article>
+
+        <article class="metric-card">
+          <span>Pending Reviews</span>
+          <strong id="operator-reviews">0</strong>
+          <small>Human authority required</small>
+        </article>
+
+        <article class="metric-card">
+          <span>Hard Denies</span>
+          <strong id="operator-denies">0</strong>
+          <small>Blocked runtime actions</small>
+        </article>
+      </section>
+
+      <section class="panel" id="operator-content">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">LIVE GOVERNANCE</p>
+            <h2>Runtime activity</h2>
+          </div>
+
+          <button class="primary-button" id="operator-refresh">
+            Refresh
+          </button>
+        </div>
+
+        <div id="operator-message" class="operator-message">
+          Select an organization in the Client Portal first.
+        </div>
+
+        <div id="operator-table-wrap" class="table-wrap hidden">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Action</th>
+                <th>Tool</th>
+                <th>Decision</th>
+                <th>Policy</th>
+                <th>Execution</th>
+              </tr>
+            </thead>
+            <tbody id="operator-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/operator.js"></script>
+</body>
+</html>

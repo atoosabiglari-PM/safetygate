@@ -23,6 +23,8 @@ spec:
           env:
             - name: SAFETYGATE_OPA_URL
               value: http://127.0.0.1:8181
+            - name: SAFETYGATE_KMS_KEY_VERSION
+              value: projects/safetygate-atoosa-2026/locations/global/keyRings/safetygate-dev/cryptoKeys/safety-passport-signing/cryptoKeyVersions/1
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
