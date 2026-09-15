@@ -12,7 +12,10 @@ from app.core.authorization.condition_enforcement import (
     verify_execution_conditions,
 )
 from app.core.authorization.role_policy import authorize_role
-from app.core.authorization.tool_gateway import execute_governed_tool
+from app.core.authorization.tool_gateway import (
+    ToolExecutor,
+    execute_governed_tool,
+)
 from app.schemas.admission import (
     AdmissionDecision,
     AdmissionResult,
@@ -68,6 +71,7 @@ def run_governed_workflow(
     runtime_request: RuntimeAuthorizationRequest,
     tool_request: ToolExecutionRequest,
     principal: PrincipalContext,
+    tool_executor: ToolExecutor | None = None,
     session: Session | None = None,
 ) -> GovernedWorkflowOutcome:
     admission = evaluate_admission(admission_request)
@@ -216,7 +220,11 @@ def run_governed_workflow(
                 audit=final_audit,
             )
 
-    execution = execute_governed_tool(tool_request, session=session)
+    execution = execute_governed_tool(
+        tool_request,
+        executor=tool_executor,
+        session=session,
+    )
 
     final_audit = authorization.audit.model_copy(
         update={"execution_outcome": execution.status.value}

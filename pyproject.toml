@@ -14,6 +14,7 @@ dependencies = [
     "httpx",
     "PyJWT[crypto]>=2.9",
     "google-cloud-kms",
+    "mcp==2.2.0",
 ]
 
 [project.optional-dependencies]
