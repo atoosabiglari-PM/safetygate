@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.agents import router as agents_router
@@ -25,6 +25,11 @@ app.mount(
     StaticFiles(directory="backend/app/static"),
     name="static",
 )
+
+
+@app.get("/", include_in_schema=False)
+def root() -> RedirectResponse:
+    return RedirectResponse(url="/portal", status_code=307)
 
 
 @app.get("/health")

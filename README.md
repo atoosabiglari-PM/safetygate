@@ -23,6 +23,10 @@ SafetyGate currently includes:
 - agent admission
 - Safety Passport validation
 - material-change recertification
+- Google Cloud KMS-backed Safety Passport signing and verification
+- OPA/Rego runtime policy integration
+- real MCP / agent / tool integration
+- client portal and operator console
 - OIDC/JWT identity verification
 - trusted role resolution
 - deterministic tool permissions
@@ -66,30 +70,37 @@ A weaker authority cannot erase a stronger restriction.
 
 ## Current Status
 
-SafetyGate is currently a governance kernel and security architecture prototype.
+SafetyGate is a working, production-deployed MVP for independent AI-agent certification and runtime authorization.
 
-It should **not yet be described as a complete production control plane**.
+Implemented production capabilities include:
 
-The current default tool execution path remains simulated.
-
-Planned production work includes:
-
-- KMS-backed Safety Passport signing
-- external OPA/Rego policy integration
-- real MCP and production tool adapters
-- production identity-provider configuration
-- authenticated API boundary
-- PostgreSQL / Cloud SQL production validation
-- hardened cloud deployment
+- Google Cloud KMS-backed Safety Passport signing and verification
+- certified configuration binding and material-change recertification
+- deterministic Python hard safety gates
+- OPA/Rego runtime policy evaluation with restrictive merge semantics
+- real MCP / agent / tool integration
+- persisted human-approval evidence and forged-approval rejection
+- PostgreSQL on Cloud SQL
 - Secret Manager integration
-- monitoring and incident response
-- operator API and UI
+- hardened Cloud Run deployment using immutable image digests
+- client governance portal
+- operator review and audit console
+
+The production service is intentionally protected by private Cloud Run IAM rather than anonymous public access.
+
+The implemented OIDC/JWT verification path is not yet bound to a specific production identity provider at the application API boundary. Broader monitoring, incident-response integration, tamper-evident audit anchoring, and larger-scale resilience testing remain commercial-hardening work.
+
+SafetyGate should therefore be described as a **working production-deployed MVP**, not as a complete enterprise security platform.
 
 ## Documentation
 
 - [Runtime Governance](docs/runtime-governance.md)
 - [Memory Governance](docs/memory-governance.md)
 - [Threat Model](docs/threat-model.md)
+- [Production Deployment](docs/production-deployment.md)
+- [MVP Closure Evidence](docs/mvp-closure-evidence.md)
+- [Demo Script](docs/demo-script.md)
+- [Submission Package](docs/submission-package.md)
 
 ## Development
 
