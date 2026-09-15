@@ -175,3 +175,40 @@ def test_verifier_fails_closed_on_google_auth_error() -> None:
         key_version_name=KEY_VERSION_NAME,
         client=AuthFailingClient(),
     )
+
+
+
+def test_passport_payload_survives_database_timestamp_roundtrip() -> None:
+    from datetime import UTC, datetime
+
+    from app.core.certification.passport_payload import build_passport_payload
+
+    aware = datetime(
+        2026, 9, 15, 17, 0, 0, 123456,
+        tzinfo=UTC,
+    )
+
+    fields = {
+        "passport_id": "passport-001",
+        "organization_id": "org-001",
+        "agent_version_id": "version-001",
+        "configuration_hash": "a" * 64,
+        "policy_version": "1.0",
+        "risk_class": "HIGH",
+        "allowed_tools": ["read_documents"],
+        "conditional_tools": [],
+        "prohibited_tools": [],
+        "human_approvers": ["reviewer"],
+    }
+
+    signed_payload = build_passport_payload(
+        **fields,
+        issued_at=aware,
+    )
+
+    database_roundtrip_payload = build_passport_payload(
+        **fields,
+        issued_at=aware.replace(tzinfo=None).isoformat(),
+    )
+
+    assert signed_payload == database_roundtrip_payload

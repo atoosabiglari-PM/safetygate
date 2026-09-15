@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 SIGNED_PASSPORT_FIELDS = (
@@ -28,8 +28,17 @@ def _canonicalize_value(name: str, value: Any) -> Any:
     if name in SET_LIKE_FIELDS:
         return sorted(value)
 
-    if isinstance(value, datetime):
-        return value.isoformat()
+    if name == "issued_at":
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value)
+
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                value = value.replace(tzinfo=UTC)
+            else:
+                value = value.astimezone(UTC)
+
+            return value.isoformat()
 
     return value
 
