@@ -17,7 +17,7 @@ spec:
       serviceAccountName: safetygate-runtime@safetygate-atoosa-2026.iam.gserviceaccount.com
       containers:
         - name: safetygate
-          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:8dcb973fb072c3fe1157ce11d8292b101dd54a5bc82098a8c99e73fef45165dd
+          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:63c1fae0a6599d37a6ad4111395ef585d9a4c5ad0ad607ddc55a02db4a8c4daa
           ports:
             - containerPort: 8080
           env:

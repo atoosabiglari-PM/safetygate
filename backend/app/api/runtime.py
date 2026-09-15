@@ -5,7 +5,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_db
-from app.core.audit.persistence import save_approval_evidence, save_runtime_audit_entry
+from app.core.audit.persistence import save_runtime_audit_entry
+from app.models.audit import ApprovalEvidenceRecord
 from app.models.certification import SafetyPassport
 from app.models.governance import Agent, AgentVersion
 from app.schemas.api import RuntimeAuthorizationCreate, RuntimeAuthorizationRead
@@ -82,11 +83,30 @@ def authorize_action(
 
     approval = None
     if payload.approval is not None:
+        stored_approval = session.scalar(
+            select(ApprovalEvidenceRecord).where(
+                ApprovalEvidenceRecord.approval_id
+                == payload.approval.approval_id,
+                ApprovalEvidenceRecord.action_id
+                == payload.action_id,
+                ApprovalEvidenceRecord.approved.is_(True),
+            )
+        )
+
+        if stored_approval is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    "Valid persisted operator approval evidence "
+                    "was not found."
+                ),
+            )
+
         approval = HumanApprovalContext(
-            approval_id=payload.approval.approval_id,
-            action_id=payload.action_id,
-            approver_identity=payload.approval.approver_identity,
-            approved=payload.approval.approved,
+            approval_id=stored_approval.approval_id,
+            action_id=stored_approval.action_id,
+            approver_identity=stored_approval.approver_identity,
+            approved=stored_approval.approved,
         )
 
     request = RuntimeAuthorizationRequest(
@@ -123,15 +143,6 @@ def authorize_action(
     )
 
     outcome = authorize_runtime_action(request)
-
-    if approval is not None:
-        try:
-            save_approval_evidence(session, approval)
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(exc),
-            ) from exc
 
     save_runtime_audit_entry(session, outcome.audit)
 
