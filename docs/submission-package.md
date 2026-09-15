@@ -202,7 +202,11 @@ Production deployment evidence:
 
 Technical MVP: complete.
 
-Production hardening: complete.
+Private production MVP deployment: complete and protected by Cloud Run IAM.
+
+Public competition showcase: deployed as an isolated disposable sandbox using a separate service account, dedicated KMS signing key, and ephemeral SQLite storage. It is not customer production.
+
+Commercial and enterprise hardening remains, including application-level identity-provider binding, cryptographic binding of operator identity, monitoring and incident response, tamper-evident audit controls, automated production smoke testing, release-path migration automation, and PostgreSQL-specific concurrency validation.
 
 Evidence and demo package: in final preparation.
 

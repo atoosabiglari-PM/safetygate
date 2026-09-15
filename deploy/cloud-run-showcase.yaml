@@ -1,0 +1,65 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: safetygate-showcase
+  namespace: "821784475882"
+
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/container-dependencies: '{"safetygate":["opa"]}'
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "1"
+
+    spec:
+      serviceAccountName: safetygate-showcase@safetygate-atoosa-2026.iam.gserviceaccount.com
+      containerConcurrency: 1
+
+      containers:
+        - name: safetygate
+          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:768594065313ebd5dad32c52f360e9435e8c2e916d5af123f9b474d25e22e63e
+
+          ports:
+            - containerPort: 8080
+
+          command:
+            - sh
+
+          args:
+            - -c
+            - |
+              alembic upgrade head &&
+              exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}
+
+          env:
+            - name: DATABASE_URL
+              value: sqlite:////tmp/safetygate-showcase.db
+
+            - name: SAFETYGATE_OPA_URL
+              value: http://127.0.0.1:8181
+
+            - name: SAFETYGATE_KMS_KEY_VERSION
+              value: projects/safetygate-atoosa-2026/locations/global/keyRings/safetygate-dev/cryptoKeys/safety-passport-showcase-signing/cryptoKeyVersions/1
+
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+        - name: opa
+          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate-opa@sha256:ea951bd539981ed48b2d6aff34b9637de039cafef54d901973a447de17b00225
+
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8181
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 10

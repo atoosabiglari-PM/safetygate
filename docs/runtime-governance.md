@@ -283,25 +283,31 @@ Memory controls include scope, retention, update policy, type allowlists and pro
 
 ## Current Scope
 
-The current implementation is a deterministic governance kernel with persistent runtime evidence, durable execution claims, failure handling, crash-recovery controls, concurrency protection, OIDC/JWT identity verification, trusted role resolution, material-change recertification, and policy provenance with deterministic rule hierarchy.
+SafetyGate is a working governance MVP with a deterministic authorization kernel, persistent runtime evidence, durable execution claims, failure handling, crash-recovery controls, concurrency protection, material-change recertification, and policy provenance.
 
-It should not yet be described as a complete production runtime control plane.
+Implemented capabilities include:
 
-The default tool executor remains simulated. The OIDC verification mechanism is implemented, but it is not yet bound to a specific production identity-provider configuration or public production API boundary.
+- KMS-signed Safety Passports and runtime signature verification
+- exact certified-configuration binding and mandatory recertification after material change
+- Python hard safety gates
+- OPA/Rego policy evaluation with restrictive-only decision merging
+- real MCP integration for governed tool execution
+- persisted human-approval evidence
+- Cloud SQL PostgreSQL persistence in the private production deployment
+- Secret Manager for production database credentials
+- digest-pinned private Cloud Run deployment
+- client portal and operator console
+- isolated public competition showcase using a separate service account, ephemeral SQLite database, and dedicated showcase KMS signing key
 
-Policy hierarchy and provenance are implemented in the deterministic governance kernel, while external OPA/Rego policy-engine integration remains future work.
+The current production service is protected by private Cloud Run IAM.
 
-Planned production capabilities include:
+SafetyGate also includes an OIDC/JWT verification mechanism, but the production application API boundary is not yet bound to a specific identity provider and verified application principal on every route. Operator approval evidence is persisted and must match an authorized approver listed in the Safety Passport, but the operator API does not yet cryptographically bind the caller identity to that approver identity.
 
-- production identity-provider configuration and authenticated API boundary
-- cryptographically signed Safety Passports using KMS
-- external OPA/Rego policy-engine integration
-- real MCP and production tool adapters
-- PostgreSQL / Cloud SQL production validation
-- hardened Cloud Run deployment
-- Secret Manager and production credential management
-- monitoring and incident-response integration
-- operator-facing API and user interface
+Remaining commercial hardening includes application-level identity integration, monitoring and incident-response integration, tamper-evident or externally anchored audit evidence, production retention controls, broader resilience testing, PostgreSQL-specific concurrency validation, automated production smoke tests, and release-path migration automation.
+
+The public showcase is a disposable competition sandbox and must not be described as customer production.
+
+SafetyGate should be described as a working governance MVP, not as a complete enterprise security platform.
 
 ## Validation
 

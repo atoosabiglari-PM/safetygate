@@ -143,7 +143,7 @@ Policies may conflict, be incorrectly configured, or use different authority lev
 
 A future production attacker may target credentials, databases, network communication, deployment configuration, signing keys, or policy infrastructure.
 
-Some infrastructure controls remain future production work.
+Some broader enterprise infrastructure controls remain future hardening work.
 
 ---
 
@@ -280,11 +280,13 @@ Examples include:
 
 The previous passport hash remains historical evidence.
 
-### Residual risk
+### Current implementation and residual risk
 
-Safety Passports are not yet cryptographically signed with a production KMS-backed signature.
+Safety Passports are cryptographically signed and verified using Google Cloud KMS.
 
-KMS signing is planned separately.
+The private production deployment and public competition showcase use separate service identities and separate signing keys.
+
+Key rotation procedures and broader key-compromise response automation remain future hardening work.
 
 ---
 
@@ -422,11 +424,13 @@ Policy audit evidence can record:
 - source reference
 - considered competing rules
 
-### Current limitation
+### Current implementation
 
-Policy resolution is currently implemented in SafetyGate's deterministic governance kernel.
+Policy resolution is implemented in SafetyGate's deterministic governance kernel and is also evaluated through an OPA/Rego sidecar.
 
-External OPA/Rego policy-engine integration is planned separately.
+OPA may only preserve or increase restriction; it cannot weaken a Python hard-gate decision.
+
+Broader production policy operations, policy-distribution controls, and change-management hardening remain future work.
 
 ---
 
@@ -454,9 +458,9 @@ Concurrency tests verify that only one caller executes the underlying operation.
 
 ### Residual risk
 
-Current simultaneous concurrency proof uses file-backed SQLite.
+SafetyGate includes simultaneous concurrency proof in the automated test suite.
 
-Production PostgreSQL behavior must also be validated during production integration.
+PostgreSQL-specific concurrency validation remains a production-hardening item for the Cloud SQL deployment.
 
 ---
 
@@ -561,33 +565,32 @@ SafetyGate must not treat plaintext secrets as governance evidence.
 
 Current audit redaction reduces accidental secret persistence.
 
-Production deployment must additionally use hardened secret management.
+The private production deployment uses Google Secret Manager for database credentials and dedicated least-privilege service identities.
 
-Planned controls include:
-
-- Google Secret Manager
-- least-privilege service identities
-- restricted database credentials
-- controlled network access
-- key rotation
+Remaining hardening includes broader credential-rotation procedures, network controls, and key-compromise response processes.
 
 ---
 
 ## Production Infrastructure Threats
 
-The current repository should not yet be described as a complete production control plane.
+SafetyGate has a working private MVP deployment on Google Cloud using Cloud Run, Cloud SQL PostgreSQL, Google Cloud KMS, Google Secret Manager, an OPA/Rego sidecar, real MCP integration, and digest-pinned container images.
 
-Production work still includes:
+The production Cloud Run service remains private behind IAM.
 
-- KMS-backed Safety Passport signing
-- external OPA/Rego policy evaluation
-- real MCP and production tool adapters
-- production PostgreSQL / Cloud SQL validation
-- hardened Cloud Run deployment
-- Secret Manager integration
-- production identity-provider configuration
-- operator API boundaries
-- monitoring and incident-response integration
+This deployment should not be described as a complete enterprise security platform.
+
+Remaining production hardening includes:
+
+- binding the implemented OIDC/JWT verifier to a specific production identity provider and every protected application API boundary
+- cryptographically binding operator actions to the verified caller identity
+- automated live-deployment smoke and adversarial tests
+- release-path database migration automation
+- PostgreSQL-specific concurrency validation
+- monitoring, alerting, incident-response, and recovery procedures
+- tamper-evident or externally anchored audit evidence
+- broader resilience, rate-limiting, network, and operational security controls
+
+A separate public competition showcase is intentionally isolated from production authority and data. It uses a dedicated service account, a dedicated KMS signing key, and ephemeral SQLite storage. It is a disposable demonstration sandbox, not customer production.
 
 ---
 
@@ -602,9 +605,9 @@ SafetyGate does not currently claim to:
 - guarantee an external system correctly executed a request
 - replace identity providers
 - replace mandatory legal analysis
-- provide cryptographic Safety Passport verification yet
-- provide production-grade network security yet
-- provide a fully deployed policy engine yet
+- claim complete enterprise-grade network and application perimeter security
+- claim that application-level production identity binding is complete
+- claim that database audit evidence is tamper-proof or externally anchored
 
 SafetyGate governs execution authority.
 
@@ -622,7 +625,7 @@ SafetyGate follows these principles:
 
 > Safety before execution.
 
-> Gemini can propose. SafetyGate decides.
+> Models propose. SafetyGate decides.
 
 > Tool discovery does not equal tool authorization.
 
@@ -646,7 +649,7 @@ Important remaining risks include:
 - vulnerabilities inside external tools
 - side effects outside SafetyGate's visibility
 - database compromise
-- signing-key compromise after KMS integration
+- signing-key compromise despite KMS protection
 - incorrectly authored policies
 - incorrectly classified tools or risk levels
 - implementation defects
