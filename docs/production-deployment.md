@@ -23,7 +23,7 @@ Authenticated Client
 ### SafetyGate
 
 Image:
-us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:96e99b3aa2b1b077aac09921b34b4dd97b32efd2b5b30605b2334f2f4a831773
+us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:2d110db4a2d3d7b9c53c98e6e540cda2cd91a28fd8d3cb0d5cc8002b918851fc
 
 Runs as a non-root user and serves FastAPI with Uvicorn on port 8080.
 
@@ -100,6 +100,11 @@ Verified:
 - configuration change -> recertification required -> hard deny
 - tool swap / permission escalation -> hard deny
 - tampered KMS Safety Passport signature -> hard deny
+- forged/self-asserted runtime approval -> HTTP 403
+- high-risk irreversible action -> HUMAN_REVIEW_REQUIRED until persisted operator approval exists
+- persisted authorized operator approval -> ALLOW on retry
+- certification lifecycle -> admission PASS -> KMS-signed Safety Passport -> ACTIVE certified agent/version
+- material configuration change -> RECERTIFICATION_REQUIRED -> runtime hard deny until recertified
 - Python terminal hard denies short-circuit OPA
 
 ## Deployment Manifest
@@ -111,7 +116,7 @@ The manifest references immutable SafetyGate and OPA image digests.
 
 ## Current Validation
 
-- pytest: 172 passed
+- pytest: 173 passed
 - known Starlette deprecation warning: backlog, non-blocking
 - existing unrelated repo-wide Ruff findings: backlog, not a Step 12 blocker
 
