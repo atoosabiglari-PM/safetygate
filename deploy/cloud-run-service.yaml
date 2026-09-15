@@ -1,0 +1,48 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: safetygate-prod
+  namespace: "821784475882"
+  labels:
+    cloud.googleapis.com/location: us-west1
+spec:
+  template:
+    metadata:
+      annotations:
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/cloudsql-instances: safetygate-atoosa-2026:us-west1:safetygate-prod-db
+        run.googleapis.com/container-dependencies: '{"safetygate":["opa"]}'
+        run.googleapis.com/secrets: 'safetygate-database-url:projects/821784475882/secrets/safetygate-database-url'
+    spec:
+      serviceAccountName: safetygate-runtime@safetygate-atoosa-2026.iam.gserviceaccount.com
+      containers:
+        - name: safetygate
+          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate@sha256:96e99b3aa2b1b077aac09921b34b4dd97b32efd2b5b30605b2334f2f4a831773
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SAFETYGATE_OPA_URL
+              value: http://127.0.0.1:8181
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: safetygate-database-url
+                  key: "1"
+          resources:
+            limits:
+              cpu: "1"
+              memory: 512Mi
+
+        - name: opa
+          image: us-west1-docker.pkg.dev/safetygate-atoosa-2026/safetygate-prod/safetygate-opa@sha256:ea951bd539981ed48b2d6aff34b9637de039cafef54d901973a447de17b00225
+          resources:
+            limits:
+              cpu: "1"
+              memory: 256Mi
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8181
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 10
